@@ -131,7 +131,7 @@ Comportamento do bot:
 
 - **WhatsApp**: **API oficial do WhatsApp Business (Cloud API da Meta)**. Não usar soluções não oficiais (baseadas no WhatsApp Web), porque o bot envia mensagens proativas (lembretes) e isso leva a banimento de número nessas soluções. O builder pode usar a Cloud API direto ou um provedor oficial (BSP), o que for mais simples.
 - **Número**: um **número novo** dedicado ao bot, na API oficial. O dono responde clientes pelo chat do painel (4.4), não pelo app do WhatsApp. O número antigo pode continuar no ar avisando o número novo.
-- **IA de conversa**: Claude (API da Anthropic), com **modelo configurável** por variável de ambiente. Padrão inicial `claude-opus-5-5`; alternativas `claude-sonnet-5-5` e `claude-haiku-5-5`. A ideia do dono é testar com conversas reais e trocar se valer a pena. Custo estimado por pedido: ~R$ 0,50 (Opus), ~R$ 0,25 (Sonnet), ~R$ 0,02 (Haiku).
+- **IA de conversa**: Claude (API da Anthropic), com **modelo configurável** por variável de ambiente. Padrão **`claude-haiku-5-5`**, por escolha do dono, pelo custo. As alternativas `claude-sonnet-5-5` e `claude-opus-5-5` ficam disponíveis trocando só a configuração, caso as conversas reais mostrem que o Haiku não dá conta. Custo estimado por pedido: ~R$ 0,50 (Opus), ~R$ 0,25 (Sonnet), ~R$ 0,02 (Haiku).
 - A IA atua com **ferramentas** (tool use) para consultar a configuração, o cliente e os pedidos, e para criar pedidos. Ela não guarda preço ou regra no prompt de forma fixa: tudo vem do cadastro, para cumprir o "não inventar".
 - A **criação do pedido** é validada em código (campos obrigatórios, bairro atendido, horário, forma de pagamento aceita), não só pela IA.
 - **Áudio**: a API da Claude não transcreve áudio, então é preciso um serviço separado de transcrição (speech-to-text) com bom suporte a português. A escolha do serviço fica com o builder.
@@ -148,6 +148,8 @@ Comportamento do bot:
 - **Português do Brasil**, tom simpático e direto, sem exagero de emoji.
 
 ## 8. Pendências que não bloqueiam a v1
+
+- **Começar cedo**: conta Meta Business da revenda (CNPJ, verificação da empresa) e o número novo para a API oficial. O desenvolvimento pode usar o número de teste da Meta até isso sair.
 
 - Perguntar à RevGás se a API deles permite **criar pedidos e consultar o status das entregas**. Se permitir, entra numa fase seguinte.
 - Confirmar com o revendedor: credenciamento no Gás do Povo, modalidade, taxa, volume de pedidos e chave Pix. Tudo isso é configuração, não código.
