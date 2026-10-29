@@ -168,6 +168,14 @@ export function openOrdersFor(db: Db, clienteId: number): Order[] {
   return rows.map(fromRow);
 }
 
+/** Pedido mais recente do cliente que não foi cancelado ("o de sempre"). */
+export function lastOrderFor(db: Db, clienteId: number): Order | null {
+  const r = db
+    .prepare("SELECT * FROM orders WHERE cliente_id = ? AND status != 'cancelado' ORDER BY id DESC LIMIT 1")
+    .get(clienteId) as Row | undefined;
+  return r ? fromRow(r) : null;
+}
+
 /** Datas das compras concluídas (entregues ou retiradas), da mais antiga para a mais nova. */
 export function deliveredOrderDates(db: Db, clienteId: number): Date[] {
   const rows = db
