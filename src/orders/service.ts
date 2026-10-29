@@ -9,6 +9,7 @@ import { getCustomer, type Customer } from '../store/customers.js';
 import { insertMessage } from '../store/messages.js';
 import {
   countOrderMessages,
+  forgetOrderMessages,
   getOrder,
   insertOrder,
   openOrdersFor,
@@ -165,9 +166,11 @@ export function createOrderService(d: {
       // Os campos de OrderRequest têm os mesmos nomes em Order; o total não é recalculado aqui.
       const descricao = describeChanges(before, { ...before, ...defined } as Order) || 'uma alteração';
       await alert(before, `Cliente quer alterar o pedido #${orderId}, que já saiu`, `Pediu para mudar: ${descricao}.`);
-      await d.dispatcher.avisoEntregador(
-        before,
-        `⚠️ PEDIDO #${orderId}: o cliente pediu uma alteração (${descricao}), mas o pedido já saiu. O dono vai falar com você.`,
+      await delivered(before, () =>
+        d.dispatcher.avisoEntregador(
+          before,
+          `⚠️ PEDIDO #${orderId}: o cliente pediu uma alteração (${descricao}), mas o pedido já saiu. O dono vai falar com você.`,
+        ),
       );
       return { ok: false, motivo: 'ja_saiu' };
     }
@@ -195,16 +198,28 @@ export function createOrderService(d: {
     });
 
     const descricao = describeChanges(before, after);
-    if (descricao !== '' && after.enviadoEm) {
+    let result = after;
+    if (after.enviadoEm && before.tipo !== after.tipo) {
+      // Entrega <-> retirada muda quem deve ter o pedido: cancela com quem tinha e
+      // manda como novo ao destino do tipo atual (com a regra "ninguém recebeu → alerta").
+      const c = mustGetCustomer(after.clienteId);
+      const n = await delivered(after, () => d.dispatcher.cancelamento(after, c));
+      if (n === 0) {
+        await alert(after, `Cancelamento do pedido #${orderId} não chegou a quem tinha o pedido`, `Mudou: ${descricao}. Avise a equipe manualmente.`);
+      }
+      // Quem tinha o pedido não responde mais por ele (orderByMessage / activeOrdersSentTo).
+      forgetOrderMessages(db, orderId);
+      result = await dispatchNew(after);
+    } else if (descricao !== '' && after.enviadoEm) {
       const n = await delivered(after, () => d.dispatcher.correcao(after, mustGetCustomer(after.clienteId), descricao));
       if (n === 0) {
         await alert(after, `Correção do pedido #${orderId} não chegou aos entregadores`, `Mudou: ${descricao}. Avise a equipe manualmente.`);
       }
     }
     if (after.precisaRevisao && !before.precisaRevisao) {
-      await alert(after, `Pedido com ${after.quantidade} botijões`, `Pedido #${orderId}: confira antes de entregar.`);
+      await alert(result, `Pedido com ${after.quantidade} botijões`, `Pedido #${orderId}: confira antes de entregar.`);
     }
-    return { ok: true, order: after };
+    return { ok: true, order: result };
   }
 
   async function cancel(
@@ -216,9 +231,11 @@ export function createOrderService(d: {
 
     if (o.status === 'saiu' && por === 'cliente') {
       await alert(o, `Cliente quer cancelar o pedido #${orderId}, que já saiu`, 'Fale com o cliente e com o entregador.');
-      await d.dispatcher.avisoEntregador(
-        o,
-        `⚠️ PEDIDO #${orderId}: o cliente pediu para cancelar, mas o pedido já saiu. O dono vai falar com você.`,
+      await delivered(o, () =>
+        d.dispatcher.avisoEntregador(
+          o,
+          `⚠️ PEDIDO #${orderId}: o cliente pediu para cancelar, mas o pedido já saiu. O dono vai falar com você.`,
+        ),
       );
       return { ok: false, motivo: 'ja_saiu' };
     }

@@ -207,6 +207,11 @@ export function countOrderMessages(db: Db, orderId: number): number {
   return (db.prepare('SELECT COUNT(*) AS n FROM order_messages WHERE order_id = ?').get(orderId) as { n: number }).n;
 }
 
+/** Esquece quem recebeu o pedido (usado quando o pedido muda de destino). */
+export function forgetOrderMessages(db: Db, orderId: number): void {
+  db.prepare('DELETE FROM order_messages WHERE order_id = ?').run(orderId);
+}
+
 /** Pedidos em recebido/saiu que tiveram mensagem enviada a este telefone (tolera o 9º dígito). */
 export function activeOrdersSentTo(db: Db, telefone: string): Order[] {
   const pairs = db

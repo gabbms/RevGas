@@ -64,7 +64,7 @@ function setup(over: Partial<StoreSettings> = {}, at: Date = SEGUNDA_10H) {
   const alerts = createAlertService({ db, outbox, settings, publicUrl: 'https://loja.exemplo', clock });
   const dispatcher = createWhatsAppDispatcher({ db, outbox, settings });
   const svc = createOrderService({ db, dispatcher, alerts, outbox, settings, clock });
-  return { db, fake, alerts, svc, cliente };
+  return { db, fake, alerts, svc, cliente, dispatcher };
 }
 
 const bodiesTo = (fake: FakeWhatsApp, to: string) =>
@@ -281,6 +281,90 @@ describe('change', () => {
     await svc.setStatus(o.id, 'entregue');
     expect(await svc.change(o.id, { quantidade: 2 })).toEqual({ ok: false, motivo: 'finalizado' });
     expect(alerts.listOpen()).toHaveLength(0);
+  });
+});
+
+describe('change que troca o tipo', () => {
+  const retirada = { gasDoPovo: { aceita: true, modalidade: 'retirada' as const, taxaEntregaCentavos: 0 } };
+
+  test('retirada → entrega: cancela com o dono e manda novo aos entregadores', async () => {
+    const { db, fake, svc, cliente } = setup(retirada);
+    const o = await created(svc, cliente.id, { quantidade: 1, modo: 'troca', pagamento: 'gas_do_povo' });
+    expect(orderRecipients(db, o.id)).toEqual([DONO]);
+    const res = await svc.change(o.id, { pagamento: 'dinheiro', endereco: req.endereco! });
+    expect(res.ok).toBe(true);
+    expect(getOrder(db, o.id)).toMatchObject({ tipo: 'entrega', status: 'recebido', totalCentavos: 11500, enviadoEm: SEGUNDA_10H.toISOString() });
+    expect(bodiesTo(fake, DONO).slice(1)).toEqual(['❌ PEDIDO #1 CANCELADO']);
+    for (const p of [JOAO, PEDRO]) {
+      const b = bodiesTo(fake, p);
+      expect(b).toHaveLength(1);
+      expect(b[0]!.startsWith('🆕 PEDIDO #1\n')).toBe(true);
+      expect(b[0]).toContain('📍 Rua das Flores, 120 – casa 2 – Centro');
+      expect(b[0]).toContain('Responda esta mensagem com');
+    }
+    expect(fake.sent.some((m) => m.kind === 'text' && m.body.includes('CORREÇÃO'))).toBe(false);
+    expect(orderRecipients(db, o.id)).toEqual([JOAO, PEDRO]);
+    expect(activeOrdersSentTo(db, DONO)).toEqual([]);
+  });
+
+  test('entrega → retirada: cancela com os entregadores e manda novo ao dono', async () => {
+    const { db, fake, svc, cliente } = setup(retirada);
+    const o = await created(svc, cliente.id);
+    const res = await svc.change(o.id, { pagamento: 'gas_do_povo' });
+    expect(res.ok).toBe(true);
+    expect(getOrder(db, o.id)).toMatchObject({ tipo: 'retirada', endereco: null, trocoParaCentavos: null, totalCentavos: 0 });
+    for (const p of [JOAO, PEDRO]) expect(bodiesTo(fake, p).slice(1)).toEqual(['❌ PEDIDO #1 CANCELADO']);
+    const dono = bodiesTo(fake, DONO);
+    expect(dono).toHaveLength(1);
+    expect(dono[0]!.startsWith('🆕 PEDIDO #1\n')).toBe(true);
+    expect(dono[0]).toContain('📍 RETIRADA NA LOJA');
+    expect(dono[0]).toContain('🔵 GÁS DO POVO – levar a Azulzinha');
+    expect(fake.sent.some((m) => m.kind === 'text' && m.body.includes('CORREÇÃO'))).toBe(false);
+    expect(orderRecipients(db, o.id)).toEqual([DONO]);
+    expect(activeOrdersSentTo(db, JOAO)).toEqual([]);
+  });
+
+  test('troca de tipo em que o novo envio não chega a ninguém alerta', async () => {
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const { db, fake, alerts, svc, cliente } = setup(retirada);
+    const o = await created(svc, cliente.id, { quantidade: 1, modo: 'troca', pagamento: 'gas_do_povo' });
+    const sendText = fake.sendText.bind(fake);
+    fake.sendText = async (to, body) => {
+      if (to === JOAO || to === PEDRO) throw new Error('boom');
+      return sendText(to, body);
+    };
+    expect((await svc.change(o.id, { pagamento: 'cartao', endereco: req.endereco! })).ok).toBe(true);
+    expect(getOrder(db, o.id)).toMatchObject({ tipo: 'entrega', status: 'recebido', enviadoEm: null });
+    expect(orderRecipients(db, o.id)).toEqual([]);
+    expect(alerts.listOpen().map((a) => a.motivo)).toEqual([`Pedido #${o.id} não chegou aos entregadores`]);
+    expect(spy).toHaveBeenCalledTimes(2);
+    spy.mockRestore();
+  });
+
+  test('troca de tipo em agendado não manda nada', async () => {
+    const { db, fake, svc, cliente } = setup(retirada, DOMINGO_21H30);
+    const o = await created(svc, cliente.id);
+    expect(o.status).toBe('agendado');
+    expect((await svc.change(o.id, { pagamento: 'gas_do_povo' })).ok).toBe(true);
+    expect(getOrder(db, o.id)!.tipo).toBe('retirada');
+    expect(fake.sent).toHaveLength(0);
+  });
+});
+
+describe('aviso ao entregador em saiu', () => {
+  test('falha no avisoEntregador não lança para quem chamou', async () => {
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const { alerts, svc, cliente, dispatcher } = setup();
+    const o = await created(svc, cliente.id);
+    await svc.setStatus(o.id, 'saiu', JOAO);
+    dispatcher.avisoEntregador = async () => {
+      throw new Error('boom');
+    };
+    expect(await svc.change(o.id, { quantidade: 2 })).toEqual({ ok: false, motivo: 'ja_saiu' });
+    expect(await svc.cancel(o.id, 'cliente')).toEqual({ ok: false, motivo: 'ja_saiu' });
+    expect(alerts.listOpen()).toHaveLength(2);
+    expect(spy).toHaveBeenCalledTimes(2);
+    spy.mockRestore();
   });
 });
 
