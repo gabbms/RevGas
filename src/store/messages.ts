@@ -51,3 +51,12 @@ export function lastCustomerMessageAt(db: Db, clienteId: number): Date | null {
     .get(clienteId) as { t: string | null };
   return r.t ? new Date(r.t) : null;
 }
+
+/** Horário da última mensagem de cada cliente (quem nunca falou não aparece). */
+export function lastMessageTimes(db: Db): Map<number, string> {
+  const rows = db.prepare('SELECT cliente_id, MAX(criado_em) AS t FROM messages GROUP BY cliente_id').all() as {
+    cliente_id: number;
+    t: string;
+  }[];
+  return new Map(rows.map((r) => [r.cliente_id, r.t]));
+}

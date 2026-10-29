@@ -1,0 +1,21 @@
+<h1><%= it.cliente.nome %></h1>
+<p><a href="/painel/clientes/<%= it.cliente.id %>">Ver cliente</a></p>
+<div class="card linha">
+  <% if (it.pausado) { %>
+    <span class="tag selo">Bot pausado até <%= it.pausadoAte %></span>
+    <form method="post" action="/painel/conversas/<%= it.cliente.id %>/devolver"><button type="submit" class="btn">Devolver ao bot</button></form>
+  <% } else { %>
+    <span>O bot está atendendo.</span>
+    <form method="post" action="/painel/conversas/<%= it.cliente.id %>/pausar"><button type="submit" class="btn sec">Pausar bot</button></form>
+  <% } %>
+</div>
+<div id="mensagens" class="mensagens" hx-get="/painel/conversas/<%= it.cliente.id %>/mensagens" hx-trigger="every 5s" hx-swap="innerHTML">
+  <%~ include('conversa-mensagens', it) %>
+</div>
+<% if (it.erro) { %><p class="erro" role="alert"><%= it.erro %></p><% } %>
+<form method="post" action="/painel/conversas/<%= it.cliente.id %>/responder" class="resposta">
+  <label for="texto">Responder pelo painel (o bot fica pausado por 2 horas)</label>
+  <textarea id="texto" name="texto" rows="3" required><%= it.texto %></textarea>
+  <button type="submit" class="btn">Enviar</button>
+</form>
+<script>var m=document.getElementById('mensagens');if(m)m.scrollTop=m.scrollHeight;</script>

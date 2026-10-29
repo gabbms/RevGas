@@ -12,6 +12,9 @@ import type { Db } from '../db/connection.js';
 import type { OrderService } from '../orders/service.js';
 import type { StoreSettings } from '../store/settings.js';
 import type { createOutbox } from '../whatsapp/outbox.js';
+import { registerConfigRoutes } from './routes-config.js';
+import { registerConversationRoutes } from './routes-conversations.js';
+import { registerCustomerRoutes } from './routes-customers.js';
 import { registerOrderRoutes } from './routes-orders.js';
 
 export interface PanelDeps {
@@ -114,5 +117,8 @@ export async function registerPanel(app: FastifyInstance, deps: PanelDeps): Prom
       return reply.redirect('/login');
     });
     registerOrderRoutes(scope, deps);
+    registerCustomerRoutes(scope, deps);
+    registerConversationRoutes(scope, deps);
+    registerConfigRoutes(scope, deps);
   });
 }

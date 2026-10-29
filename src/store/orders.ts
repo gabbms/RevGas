@@ -231,3 +231,9 @@ export function activeOrdersSentTo(db: Db, telefone: string): Order[] {
   const ids = [...new Set(pairs.filter((p) => samePhone(p.telefone, telefone)).map((p) => p.id))].sort((a, b) => a - b);
   return ids.map((id) => getOrder(db, id)!);
 }
+
+/** Histórico do cliente, do mais recente para o mais antigo. */
+export function listOrdersByCustomer(db: Db, clienteId: number): Order[] {
+  const rows = db.prepare('SELECT * FROM orders WHERE cliente_id = ? ORDER BY id DESC').all(clienteId) as Row[];
+  return rows.map(fromRow);
+}

@@ -2,29 +2,13 @@ import type { FastifyInstance } from 'fastify';
 import { localDateKey } from '../domain/hours.js';
 import { formatBRL } from '../domain/money.js';
 import { samePhone } from '../domain/phone.js';
-import type { OrderStatus, PaymentMethod } from '../domain/types.js';
+import type { OrderStatus } from '../domain/types.js';
 import { formatAddress } from '../orders/dispatcher.js';
 import { InvalidTransitionError } from '../orders/service.js';
 import { getCustomer } from '../store/customers.js';
 import { getOrder, listOrdersByLocalDay, type Order } from '../store/orders.js';
 import { renderPage, type PanelDeps } from './auth.js';
-
-const STATUS_LABEL: Record<OrderStatus, string> = {
-  agendado: 'Agendado',
-  recebido: 'Aguardando',
-  saiu: 'Saiu',
-  entregue: 'Entregue',
-  retirado: 'Retirado',
-  cancelado: 'Cancelado',
-};
-
-const PAYMENT_LABEL: Record<PaymentMethod, string> = {
-  dinheiro: 'Dinheiro',
-  cartao: 'Cartão',
-  pix_entrega: 'Pix na entrega',
-  pix_antecipado: 'Pix antecipado',
-  gas_do_povo: 'Gás do Povo',
-};
+import { PAYMENT_LABEL, STATUS_LABEL } from './labels.js';
 
 // O redirect leva só um código; o texto vem daqui (nada digitado pelo usuário volta para a página).
 const ERROS: Record<string, string> = {
