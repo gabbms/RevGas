@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { getOrder } from '../../src/store/orders.js';
+import { getOrder, insertOrder, type Order } from '../../src/store/orders.js';
 import { form, login, pedidoPadrao, setupPanel } from './helpers.js';
 
 describe('painel: login', () => {
@@ -120,6 +120,42 @@ describe('painel: pedidos', () => {
     expect(frag.body).not.toContain('#2');
     const todos = await app.inject({ method: 'GET', url: '/painel/pedidos/lista', headers: { cookie } });
     expect(todos.body.indexOf('#2')).toBeLessThan(todos.body.indexOf('#1')); // mais novo primeiro
+  });
+
+  test('pedidos abertos de dias anteriores continuam na lista, sem duplicar', async () => {
+    const { app, db, orders, cliente } = await setupPanel();
+    const base: Omit<Order, 'id' | 'status' | 'criadoEm'> = {
+      clienteId: cliente.id,
+      tipo: 'entrega',
+      quantidade: 1,
+      modo: 'troca',
+      pagamento: 'dinheiro',
+      trocoParaCentavos: null,
+      endereco: { rua: 'Rua das Flores', numero: '120', bairro: 'Centro' },
+      unitarioCentavos: 11500,
+      cascoCentavos: 0,
+      taxaEntregaCentavos: 0,
+      totalCentavos: 11500,
+      entregadorTelefone: null,
+      precisaRevisao: false,
+      enviadoEm: null,
+      saiuEm: null,
+      finalizadoEm: null,
+    };
+    // Ontem 22h no horário local (UTC-3) = hoje 01:00Z.
+    const ontem22h = '2026-11-02T01:00:00.000Z';
+    insertOrder(db, { ...base, status: 'agendado', criadoEm: ontem22h }); // #1
+    insertOrder(db, { ...base, status: 'saiu', criadoEm: '2026-10-31T15:00:00.000Z' }); // #2
+    insertOrder(db, { ...base, status: 'entregue', criadoEm: '2026-10-31T15:00:00.000Z' }); // #3 finalizado antigo
+    await orders.create(cliente.id, pedidoPadrao); // #4 de hoje
+    const cookie = await login(app);
+    const body = (await app.inject({ method: 'GET', url: '/painel/pedidos/lista', headers: { cookie } })).body;
+    const vezes = (id: number) => body.split(`<strong>#${id}</strong>`).length - 1;
+    expect([vezes(1), vezes(2), vezes(3), vezes(4)]).toEqual([1, 1, 0, 1]);
+    expect(body.indexOf('#4')).toBeLessThan(body.indexOf('#1'));
+
+    await app.inject({ method: 'POST', url: '/painel/pedidos/1/status', ...form(cookie, { status: 'cancelado' }) });
+    expect(getOrder(db, 1)?.status).toBe('cancelado');
   });
 
   test('selos Pix conferir, Gás do Povo e Revisar', async () => {

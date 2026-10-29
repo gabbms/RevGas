@@ -6,7 +6,7 @@ import type { OrderStatus } from '../domain/types.js';
 import { formatAddress } from '../orders/dispatcher.js';
 import { InvalidTransitionError } from '../orders/service.js';
 import { getCustomer } from '../store/customers.js';
-import { getOrder, listOrdersByLocalDay, type Order } from '../store/orders.js';
+import { getOrder, listOpenOrders, listOrdersByLocalDay, type Order } from '../store/orders.js';
 import { renderPage, type PanelDeps } from './auth.js';
 import { PAYMENT_LABEL, STATUS_LABEL } from './labels.js';
 
@@ -40,7 +40,11 @@ export function registerOrderRoutes(scope: FastifyInstance, deps: PanelDeps): vo
   function linhas(filtro: OrderStatus | null) {
     const s = deps.settings();
     const hora = new Intl.DateTimeFormat('pt-BR', { timeZone: s.fuso, hour: '2-digit', minute: '2-digit' });
-    return listOrdersByLocalDay(deps.db, localDateKey(deps.clock(), s.fuso), s.fuso)
+    // Pedidos criados hoje + os ainda em aberto de dias anteriores (um agendado de ontem à noite, um que saiu e não voltou).
+    const porId = new Map<number, Order>();
+    for (const o of listOrdersByLocalDay(deps.db, localDateKey(deps.clock(), s.fuso), s.fuso)) porId.set(o.id, o);
+    for (const o of listOpenOrders(deps.db)) porId.set(o.id, o);
+    return [...porId.values()]
       .filter((o) => filtro === null || o.status === filtro)
       .sort((a, b) => b.id - a.id)
       .map((o) => {

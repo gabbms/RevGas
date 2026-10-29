@@ -161,6 +161,14 @@ export function listOrdersByLocalDay(db: Db, dayKey: string, fuso: string): Orde
   return rows.filter((r) => localDateKey(new Date(r.criado_em), fuso) === dayKey).map(fromRow);
 }
 
+/** Todos os pedidos em aberto (agendado, recebido ou saiu), de qualquer data, em ordem de criação. */
+export function listOpenOrders(db: Db): Order[] {
+  const rows = db
+    .prepare("SELECT * FROM orders WHERE status IN ('agendado', 'recebido', 'saiu') ORDER BY id")
+    .all() as Row[];
+  return rows.map(fromRow);
+}
+
 export function openOrdersFor(db: Db, clienteId: number): Order[] {
   const rows = db
     .prepare("SELECT * FROM orders WHERE cliente_id = ? AND status IN ('agendado', 'recebido', 'saiu') ORDER BY id")
