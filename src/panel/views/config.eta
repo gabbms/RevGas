@@ -3,6 +3,14 @@ const erro = (campo) => it.erros[campo] || [];
 const marcado = (campo) => it.v[campo] === 'on' ? 'checked' : '';
 %>
 <h1><%= it.titulo %></h1>
+<% if (it.modelosFaltando.length > 0) { %>
+<div class="aviso" role="note">
+  <p><strong>Modelos de mensagem faltando.</strong> Fora da janela de 24 horas o WhatsApp só entrega mensagens por modelo aprovado. Peça para configurar no servidor:</p>
+  <ul>
+    <% for (const m of it.modelosFaltando) { %><li><code><%= m.variavel %></code>: <%= m.efeito %></li><% } %>
+  </ul>
+</div>
+<% } %>
 <% if (it.salvo) { %><p class="ok" role="status">Configurações salvas</p><% } %>
 <% if (Object.keys(it.erros).length > 0) { %><p class="erro" role="alert">Não salvei: corrija os campos marcados abaixo.</p><% } %>
 

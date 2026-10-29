@@ -32,3 +32,37 @@ export function loadEnv(src: Record<string, string | undefined> = process.env): 
   const cleaned = Object.fromEntries(Object.entries(src).filter(([, v]) => v !== undefined && v !== ''));
   return EnvSchema.parse(cleaned);
 }
+
+export type TemplateVar = 'WA_TPL_PEDIDO' | 'WA_TPL_ALERTA' | 'WA_TPL_STATUS' | 'WA_TPL_LEMBRETE';
+
+/** Efeito, em linguagem simples, de rodar sem cada modelo (a Meta só aceita texto livre em até 24h da última mensagem da pessoa). */
+const TEMPLATE_EFFECTS: { variavel: TemplateVar; efeito: string }[] = [
+  {
+    variavel: 'WA_TPL_PEDIDO',
+    efeito:
+      'Sem o modelo de pedido, os pedidos só chegam aos entregadores (ou a você) se eles tiverem falado com o bot nas últimas 24h.',
+  },
+  {
+    variavel: 'WA_TPL_ALERTA',
+    efeito: 'Sem o modelo de alerta, avisos ao seu WhatsApp só chegam se você tiver falado com o bot nas últimas 24h.',
+  },
+  {
+    variavel: 'WA_TPL_STATUS',
+    efeito:
+      'Sem o modelo de status, o cliente só fica sabendo que o gás saiu ou foi entregue se tiver falado com o bot nas últimas 24h.',
+  },
+  {
+    variavel: 'WA_TPL_LEMBRETE',
+    efeito: 'Sem o modelo de lembrete, o lembrete de recompra só sai para quem falou com o bot nas últimas 24h.',
+  },
+];
+
+/** Modelos de mensagem não configurados, do mais para o menos importante. */
+export function missingTemplates(env: Env): { variavel: TemplateVar; efeito: string }[] {
+  return TEMPLATE_EFFECTS.filter((t) => !env[t.variavel]);
+}
+
+/** Avisa no boot cada modelo ausente (uma linha por modelo). */
+export function warnMissingTemplates(env: Env, warn: (msg: string) => void = console.warn): void {
+  for (const t of missingTemplates(env)) warn(`aviso: ${t.variavel} não configurado. ${t.efeito}`);
+}

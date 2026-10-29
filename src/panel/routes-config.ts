@@ -1,4 +1,5 @@
 import type { FastifyInstance } from 'fastify';
+import { missingTemplates } from '../config/env.js';
 import { updateSettings } from '../store/settings.js';
 import { renderPage, type PanelDeps } from './auth.js';
 import { DIAS, PAGAMENTOS, parseConfigForm, settingsToForm, type FormErrors, type FormValues } from './config-form.js';
@@ -16,6 +17,7 @@ export function registerConfigRoutes(scope: FastifyInstance, deps: PanelDeps): v
       salvo: extra.salvo ?? false,
       dias: DIAS,
       pagamentos: PAGAMENTOS,
+      modelosFaltando: missingTemplates(deps.env),
     });
 
   scope.get('/painel/config', async (_req, reply) => pagina(reply, settingsToForm(deps.settings())));

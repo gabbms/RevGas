@@ -61,10 +61,10 @@ Roda 6 cenários (pedido novo com troco, "o de sempre", preço não cadastrado, 
 | `WA_APP_SECRET` | sim | | Segredo do app Meta; valida a assinatura `X-Hub-Signature-256` do webhook. |
 | `WA_VERIFY_TOKEN` | sim | | Texto qualquer que você inventa; a Meta o devolve na verificação do webhook. |
 | `WA_GRAPH_VERSION` | não | `v23.0` | Versão da Graph API. |
-| `WA_TPL_PEDIDO` | não | | Nome do modelo `aviso_pedido` aprovado. |
-| `WA_TPL_STATUS` | não | | Nome do modelo `status_pedido`. |
-| `WA_TPL_ALERTA` | não | | Nome do modelo `alerta_dono`. |
-| `WA_TPL_LEMBRETE` | não | | Nome do modelo `lembrete_recompra`. |
+| `WA_TPL_PEDIDO` | **sim, em produção** | | Nome do modelo `aviso_pedido` aprovado. Sem ele, o pedido só chega a entregador ou dono que falou com o bot nas últimas 24 h. |
+| `WA_TPL_STATUS` | fortemente recomendada | | Nome do modelo `status_pedido`. Sem ele, o cliente só recebe "saiu"/"entregue" se falou com o bot nas últimas 24 h. |
+| `WA_TPL_ALERTA` | **sim, em produção** | | Nome do modelo `alerta_dono`. Sem ele, os alertas só chegam ao dono se ele falou com o bot nas últimas 24 h. |
+| `WA_TPL_LEMBRETE` | fortemente recomendada | | Nome do modelo `lembrete_recompra`. Sem ele, quase nenhum lembrete de recompra sai. |
 | `ANTHROPIC_API_KEY` | sim | | Chave da API da Anthropic. |
 | `AI_MODEL` | não | `claude-haiku-5-5` | Modelo de conversa (seção 7). |
 | `AI_EFFORT` | não | `medium` | `low`, `medium` ou `high`. |
@@ -73,7 +73,7 @@ Roda 6 cenários (pedido novo com troco, "o de sempre", preço não cadastrado, 
 | `PANEL_PASSWORD` | sim | | Senha única do painel (o dono), com 12 caracteres ou mais. Depois de 5 senhas erradas em 15 minutos, o mesmo IP fica bloqueado até a janela passar. |
 | `SESSION_SECRET` | sim | | String aleatória com 32 caracteres ou mais; assina o cookie de sessão. |
 
-Variável vazia conta como ausente. Sem os `WA_TPL_*`, o bot só consegue escrever dentro da janela de 24 horas de quem falou por último com ele; os modelos cobrem o resto (seção 6).
+Variável vazia conta como ausente. Sem os `WA_TPL_*`, o bot só consegue escrever dentro da janela de 24 horas de quem falou por último com ele; os modelos cobrem o resto (seção 6). O app sobe sem eles (útil no desenvolvimento), mas avisa no log, para cada modelo ausente, o que deixa de funcionar, e a página **Configurações** do painel mostra o mesmo aviso ao dono.
 
 Chamadas à Meta e à OpenAI abortam após 20 s e a Anthropic após 60 s (com 2 novas tentativas).
 

@@ -25,7 +25,11 @@ export const env = loadEnv({
   SESSION_SECRET: 'x'.repeat(32),
 });
 
-export async function setupPanel(nomeCliente = 'Maria', clock: () => Date = () => SEGUNDA_10H) {
+export async function setupPanel(
+  nomeCliente = 'Maria',
+  clock: () => Date = () => SEGUNDA_10H,
+  envPainel: typeof env = env,
+) {
   const db = openDb(':memory:');
   updateSettings(db, {
     ...DEFAULT_SETTINGS,
@@ -49,9 +53,9 @@ export async function setupPanel(nomeCliente = 'Maria', clock: () => Date = () =
   const dispatcher = createWhatsAppDispatcher({ db, outbox, settings });
   const orders = createOrderService({ db, dispatcher, alerts, outbox, settings, clock });
   const app = await buildApp({
-    env,
+    env: envPainel,
     onInbound: async () => {},
-    registerPanel: (a) => registerPanel(a, { db, env, orders, alerts, outbox, settings, clock }),
+    registerPanel: (a) => registerPanel(a, { db, env: envPainel, orders, alerts, outbox, settings, clock }),
   });
   return { app, db, orders, alerts, cliente, fake };
 }

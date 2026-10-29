@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest';
 import { getSettings } from '../../src/store/settings.js';
-import { form, login, setupPanel } from './helpers.js';
+import { env, form, login, SEGUNDA_10H, setupPanel } from './helpers.js';
 
 type Panel = Awaited<ReturnType<typeof setupPanel>>;
 
@@ -197,5 +197,39 @@ describe('painel: configurações', () => {
     const res = await enviar(p, cookie, { ...corpoBase(), nomeLoja: '"><script>x()</script>', precoRecarga: 'abc' });
     expect(res.body).not.toContain('<script>x()</script>');
     expect(res.body).toContain('&lt;script&gt;');
+  });
+});
+
+describe('painel: aviso de modelos de mensagem ausentes', () => {
+  test('sem os WA_TPL_* a página lista cada modelo ausente e o efeito', async () => {
+    const { app } = await setupPanel();
+    const cookie = await login(app);
+    const body = (await app.inject({ method: 'GET', url: '/painel/config', headers: { cookie } })).body;
+    expect(body).toContain('Modelos de mensagem faltando');
+    for (const v of ['WA_TPL_PEDIDO', 'WA_TPL_ALERTA', 'WA_TPL_STATUS', 'WA_TPL_LEMBRETE']) expect(body).toContain(v);
+    expect(body).toContain(
+      'Sem o modelo de alerta, avisos ao seu WhatsApp só chegam se você tiver falado com o bot nas últimas 24h.',
+    );
+  });
+
+  test('com parte dos modelos, só os ausentes aparecem; com todos, nenhum aviso', async () => {
+    const parcial = await setupPanel('Maria', () => SEGUNDA_10H, { ...env, WA_TPL_PEDIDO: 'aviso_pedido', WA_TPL_ALERTA: 'alerta_dono' });
+    const c1 = await login(parcial.app);
+    const b1 = (await parcial.app.inject({ method: 'GET', url: '/painel/config', headers: { cookie: c1 } })).body;
+    expect(b1).not.toContain('WA_TPL_PEDIDO');
+    expect(b1).not.toContain('WA_TPL_ALERTA');
+    expect(b1).toContain('WA_TPL_STATUS');
+    expect(b1).toContain('WA_TPL_LEMBRETE');
+
+    const todos = await setupPanel('Maria', () => SEGUNDA_10H, {
+      ...env,
+      WA_TPL_PEDIDO: 'a',
+      WA_TPL_ALERTA: 'b',
+      WA_TPL_STATUS: 'c',
+      WA_TPL_LEMBRETE: 'd',
+    });
+    const c2 = await login(todos.app);
+    const b2 = (await todos.app.inject({ method: 'GET', url: '/painel/config', headers: { cookie: c2 } })).body;
+    expect(b2).not.toContain('Modelos de mensagem faltando');
   });
 });

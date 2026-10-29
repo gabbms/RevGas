@@ -5,7 +5,7 @@ import { createAgent, createCustomerTurnHandler } from './ai/agent.js';
 import type { ToolContext } from './ai/tool-handlers.js';
 import { createAlertService } from './alerts/service.js';
 import { createOpenAITranscriber, type Transcriber } from './audio/transcriber.js';
-import { loadEnv, type Env } from './config/env.js';
+import { loadEnv, warnMissingTemplates, type Env } from './config/env.js';
 import { openDb, type Db } from './db/connection.js';
 import { normalizeText } from './domain/order-validation.js';
 import { runReminderJob } from './domain/reminders.js';
@@ -169,6 +169,7 @@ export async function createAppContext(env: Env, overrides: AppOverrides = {}): 
 
 async function main(): Promise<void> {
   const env = loadEnv();
+  warnMissingTemplates(env);
   const ctx = await createAppContext(env);
   ctx.startJobs();
 

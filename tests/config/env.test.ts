@@ -1,5 +1,5 @@
-import { describe, expect, test } from 'vitest';
-import { loadEnv } from '../../src/config/env.js';
+import { describe, expect, test, vi } from 'vitest';
+import { loadEnv, missingTemplates, warnMissingTemplates } from '../../src/config/env.js';
 
 const base = {
   PUBLIC_URL: 'https://exemplo.com',
@@ -37,5 +37,24 @@ describe('loadEnv', () => {
 
   test('string vazia em modelo opcional conta como ausente', () => {
     expect(loadEnv({ ...base, WA_TPL_PEDIDO: '' }).WA_TPL_PEDIDO).toBeUndefined();
+  });
+});
+
+describe('modelos de mensagem ausentes', () => {
+  test('lista os ausentes na ordem de importância, com o efeito', () => {
+    const env = loadEnv({ ...base, WA_TPL_STATUS: 'status_pedido' });
+    expect(missingTemplates(env).map((m) => m.variavel)).toEqual(['WA_TPL_PEDIDO', 'WA_TPL_ALERTA', 'WA_TPL_LEMBRETE']);
+    expect(missingTemplates(env).every((m) => m.efeito.includes('24h'))).toBe(true);
+  });
+
+  test('warnMissingTemplates avisa uma linha por modelo ausente', () => {
+    const warn = vi.fn();
+    warnMissingTemplates(loadEnv({ ...base, WA_TPL_PEDIDO: 'a', WA_TPL_ALERTA: 'b' }), warn);
+    expect(warn).toHaveBeenCalledTimes(2);
+    expect(warn.mock.calls[0]![0]).toContain('WA_TPL_STATUS');
+    expect(warn.mock.calls[1]![0]).toContain('WA_TPL_LEMBRETE');
+    const nada = vi.fn();
+    warnMissingTemplates(loadEnv({ ...base, WA_TPL_PEDIDO: 'a', WA_TPL_ALERTA: 'b', WA_TPL_STATUS: 'c', WA_TPL_LEMBRETE: 'd' }), nada);
+    expect(nada).not.toHaveBeenCalled();
   });
 });
