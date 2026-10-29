@@ -7,6 +7,7 @@ import { createAppContext } from '../src/main.js';
 import { insertOrder } from '../src/store/orders.js';
 import { createDraft } from '../src/store/drafts.js';
 import { upsertCustomerByPhone } from '../src/store/customers.js';
+import { insertMessage } from '../src/store/messages.js';
 import { FakeWhatsApp } from './fakes/fake-whatsapp.js';
 
 const env = loadEnv({
@@ -100,6 +101,27 @@ describe('createAppContext', () => {
       entregadorTelefone: null, precisaRevisao: false, criadoEm: NOW.toISOString(), enviadoEm: null, saiuEm: null, finalizadoEm: null,
     });
     expect(ctx.hasGasDoPovoContext(b.id)).toBe(true);
+    await ctx.app.close();
+  });
+
+  test('hasGasDoPovoContext: mensagem do cliente nas últimas 2h mencionando Gás do Povo', async () => {
+    const fake = new FakeWhatsApp();
+    const ctx = await createAppContext(env, { api: fake, anthropic: fakeAnthropic('ok'), clock: () => NOW });
+    contexts.push(ctx);
+    const msg = (clienteId: number, autor: 'cliente' | 'bot', texto: string, minutosAtras: number) =>
+      insertMessage(ctx.db, {
+        clienteId, autor, tipo: 'texto', texto, wamid: null,
+        criadoEm: new Date(NOW.getTime() - minutosAtras * 60_000).toISOString(),
+      });
+
+    const a = upsertCustomerByPhone(ctx.db, '5586900000003', NOW);
+    msg(a.id, 'cliente', 'Quero usar o GÁS DO POVO', 30);
+    expect(ctx.hasGasDoPovoContext(a.id)).toBe(true);
+
+    const b = upsertCustomerByPhone(ctx.db, '5586900000004', NOW);
+    msg(b.id, 'cliente', 'quero pelo gas do povo', 3 * 60); // antigo demais
+    msg(b.id, 'bot', 'Aceitamos Gás do Povo!', 10); // do bot não conta
+    expect(ctx.hasGasDoPovoContext(b.id)).toBe(false);
     await ctx.app.close();
   });
 });

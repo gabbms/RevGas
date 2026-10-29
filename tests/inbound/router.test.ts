@@ -98,6 +98,13 @@ describe('roteador', () => {
     expect(allMessages(db)[0]!.texto).toBe('[código removido]');
   });
 
+  test('código no meio de uma frase com palavra-chave é mascarado mesmo sem contexto', async () => {
+    const { db, router } = setup();
+    await router.handle([ev('w1', 'meu código é 482913')]);
+    await router.idle();
+    expect(allMessages(db)[0]!.texto).toBe('meu código é [código removido]');
+  });
+
   test('CPF mascarado antes de gravar', async () => {
     const { db, router } = setup();
     await router.handle([ev('w1', 'cpf 123.456.789-09')]);
