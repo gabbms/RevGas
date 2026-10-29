@@ -16,9 +16,12 @@ const ALERT_INTERVAL_MS = 10 * 60 * 1000;
 const DONO_PREFIX = '(mensagem do dono da revenda) ';
 const DESCULPA = 'Desculpa, tive um probleminha aqui. Já avisei a revenda e logo alguém te responde.';
 
+/** Colchetes marcam avisos do sistema; o cliente não pode forjar um. */
+const unbracket = (t: string): string => t.replaceAll('[', '(').replaceAll(']', ')');
+
 function toParam(msg: StoredMessage): { role: MessageParam['role']; text: string } {
   if (msg.tipo === 'sistema') return { role: 'user', text: `[${msg.texto}]` };
-  if (msg.autor === 'cliente') return { role: 'user', text: msg.texto };
+  if (msg.autor === 'cliente') return { role: 'user', text: unbracket(msg.texto) };
   if (msg.autor === 'dono') return { role: 'assistant', text: DONO_PREFIX + msg.texto };
   return { role: 'assistant', text: msg.texto };
 }
@@ -37,8 +40,11 @@ export function buildHistory(msgs: StoredMessage[]): MessageParam[] {
   return out;
 }
 
+/** Respostas cortadas ou que ainda pediam ferramenta não vão ao cliente. */
+const INCOMPLETE: ReadonlySet<Anthropic.Beta.BetaStopReason> = new Set(['refusal', 'max_tokens', 'tool_use']);
+
 export function extractReply(m: Anthropic.Beta.BetaMessage): string | null {
-  if (m.stop_reason === 'refusal') return null;
+  if (m.stop_reason !== null && INCOMPLETE.has(m.stop_reason)) return null;
   const text = m.content
     .flatMap((b) => (b.type === 'text' ? [b.text.trim()] : []))
     .filter((t) => t !== '')
@@ -48,6 +54,16 @@ export function extractReply(m: Anthropic.Beta.BetaMessage): string | null {
 
 function historyFor(db: Db, clienteId: number, now: Date): MessageParam[] {
   return buildHistory(recentMessages(db, clienteId, new Date(now.getTime() - HISTORY_WINDOW_MS)));
+}
+
+/** Só nome, status HTTP e tipo do erro da API: nada da conversa. */
+function describeError(err: unknown): string {
+  if (!(err instanceof Error)) return 'erro';
+  const e = err as Error & { status?: unknown; type?: unknown };
+  const parts = [err.name];
+  if (typeof e.status === 'number') parts.push(`status=${e.status}`);
+  if (typeof e.type === 'string') parts.push(`type=${e.type}`);
+  return parts.join(' ');
 }
 
 export interface Agent {
@@ -80,6 +96,8 @@ export function createAgent(d: {
       output_config: { effort: d.effort },
       cache_control: { type: 'ephemeral' },
       max_iterations: 10,
+      // Sem thread no servidor: a conversa não fica guardada na Anthropic entre turnos (LGPD).
+      thread: false,
     });
     return extractReply(final);
   }
@@ -132,7 +150,7 @@ export function createCustomerTurnHandler(d: {
     try {
       reply = await d.agent.reply(clienteId);
     } catch (err) {
-      console.error('agente: erro ao gerar resposta', clienteId, err instanceof Error ? err.name : 'erro');
+      console.error('agente: erro ao gerar resposta', clienteId, describeError(err));
     }
     // Pausado enquanto a IA pensava: o dono assumiu, então a resposta é descartada.
     if (paused(clienteId)) return;
