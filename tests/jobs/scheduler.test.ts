@@ -92,6 +92,51 @@ describe('runReminderJob', () => {
   });
 });
 
+describe('runReminderJob: falha ao gravar depois do envio', () => {
+  test('erro ao gravar a mensagem do cliente 1 não impede o cliente 2 nem reenvia ao cliente 1', async () => {
+    const { db, fake, c, run } = setup({ template: 't' });
+    const c2 = upsertCustomerByPhone(db, '5586988887777', at10h);
+    updateCustomer(db, c2.id, { ultimaMensagemEm: '2026-10-01T12:00:00Z' });
+    delivered(db, c2.id, '2026-09-01T12:00:00Z');
+    delivered(db, c2.id, '2026-10-01T12:00:00Z');
+    // Gravar a mensagem do cliente 1 falha (disco, constraint...).
+    db.exec(`CREATE TRIGGER falha_msg BEFORE INSERT ON messages WHEN NEW.cliente_id = ${c.id}
+             BEGIN SELECT RAISE(ABORT, 'boom'); END`);
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+    expect(await run()).toBe(2);
+    expect(fake.sent.map((m) => m.to)).toEqual(['5586999991234', '5586988887777']);
+    expect(getCustomer(db, c.id)!.ultimoLembreteEm).toBe(at10h.toISOString());
+    expect(getCustomer(db, c2.id)!.ultimoLembreteEm).toBe(at10h.toISOString());
+    // Log sem dados pessoais: nem telefone nem nome.
+    const logged = JSON.stringify(log.mock.calls);
+    expect(logged).not.toContain('5586999991234');
+    expect(logged).not.toContain('Ana');
+    log.mockRestore();
+
+    expect(await run()).toBe(0); // tick seguinte: ninguém recebe de novo
+    expect(fake.sent).toHaveLength(2);
+  });
+
+  test('exceção ao processar um cliente não trava o lote', async () => {
+    const { db, fake, c, run } = setup({ template: 't' });
+    const c2 = upsertCustomerByPhone(db, '5586988887777', at10h);
+    updateCustomer(db, c2.id, { ultimaMensagemEm: '2026-10-01T12:00:00Z' });
+    delivered(db, c2.id, '2026-09-01T12:00:00Z');
+    delivered(db, c2.id, '2026-10-01T12:00:00Z');
+    // Gravar qualquer coisa do cliente 1 falha, inclusive ultimo_lembrete_em.
+    db.exec(`CREATE TRIGGER falha_msg BEFORE INSERT ON messages WHEN NEW.cliente_id = ${c.id}
+             BEGIN SELECT RAISE(ABORT, 'boom'); END`);
+    db.exec(`CREATE TRIGGER falha_cli BEFORE UPDATE ON customers WHEN NEW.id = ${c.id}
+             BEGIN SELECT RAISE(ABORT, 'boom'); END`);
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+    expect(await run()).toBe(1); // o cliente 1 deu exceção e não conta
+    expect(getCustomer(db, c2.id)!.ultimoLembreteEm).toBe(at10h.toISOString());
+    expect(fake.sent).toHaveLength(2);
+    expect(log).toHaveBeenCalledWith('lembretes: falha ao processar o cliente', c.id, 'boom');
+    log.mockRestore();
+  });
+});
+
 describe('startScheduler', () => {
   beforeEach(() => vi.useFakeTimers());
   afterEach(() => vi.useRealTimers());

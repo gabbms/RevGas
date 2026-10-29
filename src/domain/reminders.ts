@@ -1,5 +1,5 @@
 import type { Db } from '../db/connection.js';
-import { listCustomers, updateCustomer } from '../store/customers.js';
+import { listCustomers, updateCustomer, type Customer } from '../store/customers.js';
 import { insertMessage } from '../store/messages.js';
 import { deliveredOrderDates, openOrdersFor } from '../store/orders.js';
 import type { StoreSettings } from '../store/settings.js';
@@ -46,6 +46,40 @@ export interface ReminderJobDeps {
   clock: () => Date;
 }
 
+/** Envia o lembrete a um cliente se for a hora dele. Devolve true se a mensagem foi entregue à API. */
+async function remindCustomer(d: ReminderJobDeps, c: Customer, now: Date, preco: string): Promise<boolean> {
+  if (c.telefone.startsWith('excluido-') || c.ultimaMensagemEm === null) return false;
+  const due = dueForReminder(
+    {
+      entregas: deliveredOrderDates(d.db, c.id),
+      ultimoLembreteEm: c.ultimoLembreteEm ? new Date(c.ultimoLembreteEm) : null,
+      temPedidoAberto: openOrdersFor(d.db, c.id).length > 0,
+      lembretesDesativados: c.lembretesDesativados,
+    },
+    now,
+  );
+  if (!due) return false;
+  const texto = REMINDER_TEXT(c.nome, preco);
+  const r = await d.outbox.send({
+    telefone: c.telefone,
+    texto,
+    ...(d.templateLembrete ? { template: { nome: d.templateLembrete, parametros: [c.nome ?? 'tudo bem', preco] } } : {}),
+  });
+  if (!r.ok) return false;
+  const marcar = () => updateCustomer(d.db, c.id, { ultimoLembreteEm: now.toISOString() });
+  try {
+    d.db.transaction(() => {
+      insertMessage(d.db, { clienteId: c.id, autor: 'bot', tipo: 'texto', texto, wamid: r.wamid, criadoEm: now.toISOString() });
+      marcar();
+    })();
+  } catch (err) {
+    // O lembrete já saiu: sem marcar o ciclo ele seria reenviado a cada minuto.
+    console.error('lembretes: enviado, mas falhou ao gravar; marcando só o ciclo', c.id, err instanceof Error ? err.message : String(err));
+    marcar();
+  }
+  return true;
+}
+
 export async function runReminderJob(d: ReminderJobDeps): Promise<number> {
   const now = d.clock();
   const s = d.settings();
@@ -56,27 +90,12 @@ export async function runReminderJob(d: ReminderJobDeps): Promise<number> {
   const preco = formatBRL(s.precoRecargaCentavos);
   let enviados = 0;
   for (const c of listCustomers(d.db)) {
-    if (c.telefone.startsWith('excluido-') || c.ultimaMensagemEm === null) continue;
-    const due = dueForReminder(
-      {
-        entregas: deliveredOrderDates(d.db, c.id),
-        ultimoLembreteEm: c.ultimoLembreteEm ? new Date(c.ultimoLembreteEm) : null,
-        temPedidoAberto: openOrdersFor(d.db, c.id).length > 0,
-        lembretesDesativados: c.lembretesDesativados,
-      },
-      now,
-    );
-    if (!due) continue;
-    const texto = REMINDER_TEXT(c.nome, preco);
-    const r = await d.outbox.send({
-      telefone: c.telefone,
-      texto,
-      ...(d.templateLembrete ? { template: { nome: d.templateLembrete, parametros: [c.nome ?? 'tudo bem', preco] } } : {}),
-    });
-    if (!r.ok) continue;
-    insertMessage(d.db, { clienteId: c.id, autor: 'bot', tipo: 'texto', texto, wamid: r.wamid, criadoEm: now.toISOString() });
-    updateCustomer(d.db, c.id, { ultimoLembreteEm: now.toISOString() });
-    enviados++;
+    try {
+      if (await remindCustomer(d, c, now, preco)) enviados++;
+    } catch (err) {
+      // Um cliente com problema não trava o lote. Sem telefone nem nome no log.
+      console.error('lembretes: falha ao processar o cliente', c.id, err instanceof Error ? err.message : String(err));
+    }
   }
   return enviados;
 }
