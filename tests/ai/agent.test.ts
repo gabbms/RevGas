@@ -250,15 +250,30 @@ describe('createCustomerTurnHandler', () => {
     s.say('cliente', 'quero um gás');
     const p = await createToolHandlers(s.makeContext(s.cliente.id)).prepararPedido({ quantidade: 1, modo: 'troca', pagamento: 'cartao', endereco: { rua: 'Rua A', numero: '1', bairro: 'Centro' } });
     if (!('rascunhoId' in p)) throw new Error(p.erros.join('; '));
+    const resposta = 'Resumo: 1 botijão. Total: R$ 115,00. Confirma?';
+    const agent = agentOf(async () => resposta);
+    const turn = createCustomerTurnHandler({ db: s.db, agent, outbox: s.outbox, alerts: s.alerts, clock: s.clock });
+
+    await turn(s.cliente.id);
+
+    expect(s.fake.sent).toEqual([{ to: CLIENTE, kind: 'text', body: resposta }]);
+    const last = recentMessages(s.db, s.cliente.id, new Date(0)).at(-1)!;
+    expect(last).toMatchObject({ autor: 'bot', tipo: 'texto', texto: resposta, wamid: 'wamid.1' });
+    expect(getDraft(s.db, p.rascunhoId)!.apresentadoEm).toBe(SEGUNDA_10H.toISOString());
+  });
+
+  test('resposta sem o total do rascunho não marca o resumo como apresentado', async () => {
+    const s = setup();
+    s.say('cliente', 'quero um gás');
+    const p = await createToolHandlers(s.makeContext(s.cliente.id)).prepararPedido({ quantidade: 1, modo: 'troca', pagamento: 'cartao', endereco: { rua: 'Rua A', numero: '1', bairro: 'Centro' } });
+    if (!('rascunhoId' in p)) throw new Error(p.erros.join('; '));
     const agent = agentOf(async () => 'Resumo: 1 botijão. Confirma?');
     const turn = createCustomerTurnHandler({ db: s.db, agent, outbox: s.outbox, alerts: s.alerts, clock: s.clock });
 
     await turn(s.cliente.id);
 
-    expect(s.fake.sent).toEqual([{ to: CLIENTE, kind: 'text', body: 'Resumo: 1 botijão. Confirma?' }]);
-    const last = recentMessages(s.db, s.cliente.id, new Date(0)).at(-1)!;
-    expect(last).toMatchObject({ autor: 'bot', tipo: 'texto', texto: 'Resumo: 1 botijão. Confirma?', wamid: 'wamid.1' });
-    expect(getDraft(s.db, p.rascunhoId)!.apresentadoEm).toBe(SEGUNDA_10H.toISOString());
+    expect(s.fake.sent).toHaveLength(1);
+    expect(getDraft(s.db, p.rascunhoId)!.apresentadoEm).toBeNull();
   });
 
   test('envio que falha não marca o resumo como apresentado', async () => {
@@ -266,7 +281,7 @@ describe('createCustomerTurnHandler', () => {
     s.say('cliente', 'quero um gás');
     const p = await createToolHandlers(s.makeContext(s.cliente.id)).prepararPedido({ quantidade: 1, modo: 'troca', pagamento: 'cartao', endereco: { rua: 'Rua A', numero: '1', bairro: 'Centro' } });
     if (!('rascunhoId' in p)) throw new Error(p.erros.join('; '));
-    const agent = agentOf(async () => 'Resumo: 1 botijão. Confirma?');
+    const agent = agentOf(async () => 'Resumo: 1 botijão. Total: R$ 115,00. Confirma?');
     const turn = createCustomerTurnHandler({ db: s.db, agent, outbox: s.outbox, alerts: s.alerts, clock: s.clock });
     s.fake.failNext(new Error('meta fora do ar'));
 

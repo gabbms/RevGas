@@ -88,6 +88,16 @@ export function supersedeOpenDrafts(db: Db, clienteId: number, now: Date): void 
   ).run(at, at, clienteId);
 }
 
+/** Rascunho aberto (não consumido nem substituído) mais recente do cliente. */
+export function latestOpenDraft(db: Db, clienteId: number): Draft | null {
+  const r = db
+    .prepare(
+      'SELECT * FROM drafts WHERE cliente_id = ? AND consumido_em IS NULL AND substituido_em IS NULL ORDER BY id DESC LIMIT 1',
+    )
+    .get(clienteId) as Row | undefined;
+  return r ? fromRow(r) : null;
+}
+
 /** Marca como apresentados os rascunhos abertos do cliente; chamado logo depois de a resposta sair. */
 export function markDraftsPresented(db: Db, clienteId: number, at: Date): void {
   db.prepare(

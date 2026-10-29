@@ -1,8 +1,9 @@
 import type Anthropic from '@anthropic-ai/sdk';
 import type { AlertService } from '../alerts/service.js';
 import type { Db } from '../db/connection.js';
+import { formatBRL } from '../domain/money.js';
 import { getCustomer } from '../store/customers.js';
-import { markDraftsPresented } from '../store/drafts.js';
+import { latestOpenDraft, markDraftsPresented } from '../store/drafts.js';
 import { insertMessage, lastCustomerMessageAt, recentMessages, type StoredMessage } from '../store/messages.js';
 import type { createOutbox } from '../whatsapp/outbox.js';
 import { SYSTEM_PROMPT } from './prompt.js';
@@ -127,6 +128,11 @@ export function createCustomerTurnHandler(d: {
     await d.alerts.create({ clienteId, motivo: 'Bot não conseguiu responder', resumo });
   }
 
+  function showsLatestDraftTotal(clienteId: number, texto: string): boolean {
+    const draft = latestOpenDraft(d.db, clienteId);
+    return draft !== null && texto.replace(/ /g, ' ').includes(formatBRL(draft.totalCentavos));
+  }
+
   /** Envia ao cliente e grava como fala do bot; devolve se saiu. */
   async function deliver(clienteId: number, telefone: string, texto: string, isAgentReply: boolean): Promise<boolean> {
     const r = await d.outbox.send({ telefone, texto });
@@ -137,7 +143,8 @@ export function createCustomerTurnHandler(d: {
     const now = d.clock();
     insertMessage(d.db, { clienteId, autor: 'bot', tipo: 'texto', texto, wamid: r.wamid, criadoEm: now.toISOString() });
     // Só depois de a resposta sair o cliente viu o resumo; sem isso nenhum rascunho pode ser confirmado.
-    if (isAgentReply) markDraftsPresented(d.db, clienteId, now);
+    // E só conta como visto se a resposta repetiu o total do resumo mais recente.
+    if (isAgentReply && showsLatestDraftTotal(clienteId, texto)) markDraftsPresented(d.db, clienteId, now);
     return true;
   }
 
