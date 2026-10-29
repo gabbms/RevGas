@@ -40,9 +40,13 @@ describe('parseWebhook', () => {
     expect(doc!.conteudo).toEqual({ tipo: 'documento', mediaId: 'm2', mime: 'application/pdf' });
   });
 
-  test.each(['sticker', 'location', 'contacts', 'reaction'])('%s vira outro', (type) => {
+  test.each(['sticker', 'location', 'contacts'])('%s vira outro', (type) => {
     const [e] = parseWebhook(msg({ type, [type]: {} }));
     expect(e!.conteudo).toEqual({ tipo: 'outro' });
+  });
+
+  test('reação é descartada (não vira evento)', () => {
+    expect(parseWebhook(msg({ type: 'reaction', reaction: { message_id: 'wamid.P', emoji: '👍' } }))).toEqual([]);
   });
 
   test('statuses são ignorados e payload inválido dá []', () => {

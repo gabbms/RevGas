@@ -69,7 +69,7 @@ function parseContent(m: Obj): InboundContent {
   }
 }
 
-/** Extrai as mensagens recebidas de um payload da Cloud API; ignora `statuses` e payloads inválidos. */
+/** Extrai as mensagens recebidas de um payload da Cloud API; ignora `statuses`, reações e payloads inválidos. */
 export function parseWebhook(payload: unknown): InboundEvent[] {
   const out: InboundEvent[] = [];
   if (!isObj(payload)) return out;
@@ -82,6 +82,7 @@ export function parseWebhook(payload: unknown): InboundEvent[] {
       const nomePerfil = isObj(contact) && isObj(contact.profile) ? str(contact.profile.name) : undefined;
       for (const m of list(value.messages)) {
         if (!isObj(m)) continue;
+        if (m.type === 'reaction') continue; // reação (👍) não é mensagem para o bot
         const wamid = str(m.id);
         const de = str(m.from);
         const ts = Number(m.timestamp);
