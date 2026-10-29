@@ -1,0 +1,112 @@
+<%
+const erro = (campo) => it.erros[campo] || [];
+const marcado = (campo) => it.v[campo] === 'on' ? 'checked' : '';
+%>
+<h1><%= it.titulo %></h1>
+<% if (it.modelosFaltando.length > 0) { %>
+<div class="aviso" role="note">
+  <p><strong>Modelos de mensagem faltando.</strong> Fora da janela de 24 horas o WhatsApp só entrega mensagens por modelo aprovado. Peça para configurar no servidor:</p>
+  <ul>
+    <% for (const m of it.modelosFaltando) { %><li><code><%= m.variavel %></code>: <%= m.efeito %></li><% } %>
+  </ul>
+</div>
+<% } %>
+<% if (it.salvo) { %><p class="ok" role="status">Configurações salvas</p><% } %>
+<% if (Object.keys(it.erros).length > 0) { %><p class="erro" role="alert">Não salvei: corrija os campos marcados abaixo.</p><% } %>
+
+<form method="post" action="/painel/config" class="config">
+
+  <fieldset>
+    <legend>Loja</legend>
+    <label for="nomeLoja">Nome da loja</label>
+    <input id="nomeLoja" name="nomeLoja" value="<%= it.v.nomeLoja %>">
+    <% for (const m of erro('nomeLoja')) { %><p class="erro-campo"><%= m %></p><% } %>
+    <label for="enderecoLoja">Endereço da loja</label>
+    <input id="enderecoLoja" name="enderecoLoja" value="<%= it.v.enderecoLoja %>">
+    <% for (const m of erro('enderecoLoja')) { %><p class="erro-campo"><%= m %></p><% } %>
+  </fieldset>
+
+  <fieldset>
+    <legend>Preços e entrega</legend>
+    <label for="precoRecarga">Preço da recarga (R$)</label>
+    <input id="precoRecarga" name="precoRecarga" inputmode="decimal" value="<%= it.v.precoRecarga %>">
+    <% for (const m of erro('precoRecarga')) { %><p class="erro-campo"><%= m %></p><% } %>
+    <label for="precoCompleto">Preço do botijão completo (R$)</label>
+    <input id="precoCompleto" name="precoCompleto" inputmode="decimal" value="<%= it.v.precoCompleto %>">
+    <% for (const m of erro('precoCompleto')) { %><p class="erro-campo"><%= m %></p><% } %>
+    <label for="previsaoEntregaMin">Previsão de entrega (minutos)</label>
+    <input id="previsaoEntregaMin" name="previsaoEntregaMin" inputmode="numeric" value="<%= it.v.previsaoEntregaMin %>">
+    <% for (const m of erro('previsaoEntregaMin')) { %><p class="erro-campo"><%= m %></p><% } %>
+  </fieldset>
+
+  <fieldset>
+    <legend>Horário de funcionamento</legend>
+    <% for (const d of it.dias) { %>
+      <div class="dia">
+        <strong><%= d.rotulo %></strong>
+        <label class="check"><input type="checkbox" name="<%= d.id %>_fechado" value="on" <%= marcado(d.id + '_fechado') %>> Fechado</label>
+        <label>Abre <input type="time" name="<%= d.id %>_abre" value="<%= it.v[d.id + '_abre'] %>"></label>
+        <label>Fecha <input type="time" name="<%= d.id %>_fecha" value="<%= it.v[d.id + '_fecha'] %>"></label>
+      </div>
+      <% for (const m of erro(d.id)) { %><p class="erro-campo"><%= d.rotulo %>: <%= m %></p><% } %>
+    <% } %>
+  </fieldset>
+
+  <fieldset>
+    <legend>Bairros atendidos</legend>
+    <label for="bairros">Um bairro por linha</label>
+    <textarea id="bairros" name="bairros" rows="6"><%= it.v.bairros %></textarea>
+    <% for (const m of erro('bairros')) { %><p class="erro-campo"><%= m %></p><% } %>
+  </fieldset>
+
+  <fieldset>
+    <legend>Formas de pagamento</legend>
+    <% for (const p of it.pagamentos) { %>
+      <label class="check"><input type="checkbox" name="pagamentos" value="<%= p.id %>" <%= it.v.pagamentos.includes(p.id) ? 'checked' : '' %>> <%= p.rotulo %></label>
+    <% } %>
+    <% for (const m of erro('pagamentos')) { %><p class="erro-campo"><%= m %></p><% } %>
+    <label for="chavePix">Chave Pix</label>
+    <input id="chavePix" name="chavePix" value="<%= it.v.chavePix %>">
+    <% for (const m of erro('chavePix')) { %><p class="erro-campo"><%= m %></p><% } %>
+  </fieldset>
+
+  <fieldset>
+    <legend>Pedidos e avisos</legend>
+    <label for="destinoPedidos">Para onde vão os pedidos novos</label>
+    <select id="destinoPedidos" name="destinoPedidos">
+      <option value="entregadores" <%= it.v.destinoPedidos === 'entregadores' ? 'selected' : '' %>>Para os entregadores</option>
+      <option value="dono" <%= it.v.destinoPedidos === 'dono' ? 'selected' : '' %>>Só para o meu WhatsApp</option>
+    </select>
+    <% for (const m of erro('destinoPedidos')) { %><p class="erro-campo"><%= m %></p><% } %>
+    <label for="telefoneDono">WhatsApp do dono (recebe os alertas)</label>
+    <input id="telefoneDono" name="telefoneDono" inputmode="tel" value="<%= it.v.telefoneDono %>">
+    <% for (const m of erro('telefoneDono')) { %><p class="erro-campo"><%= m %></p><% } %>
+    <label for="entregadores">Entregadores: um por linha, no formato Nome; telefone</label>
+    <textarea id="entregadores" name="entregadores" rows="4" placeholder="João; 86 99999-0000"><%= it.v.entregadores %></textarea>
+    <% for (const m of erro('entregadores')) { %><p class="erro-campo"><%= m %></p><% } %>
+  </fieldset>
+
+  <fieldset>
+    <legend>Gás do Povo</legend>
+    <label class="check"><input type="checkbox" name="gdpAceita" value="on" <%= marcado('gdpAceita') %>> Atendo pelo Gás do Povo</label>
+    <label for="gdpModalidade">Como atende</label>
+    <select id="gdpModalidade" name="gdpModalidade">
+      <option value="entrega" <%= it.v.gdpModalidade === 'entrega' ? 'selected' : '' %>>Entrega em casa</option>
+      <option value="retirada" <%= it.v.gdpModalidade === 'retirada' ? 'selected' : '' %>>Só retirada na loja</option>
+    </select>
+    <% for (const m of erro('gdpModalidade')) { %><p class="erro-campo"><%= m %></p><% } %>
+    <label for="gdpTaxa">Taxa de entrega (R$)</label>
+    <input id="gdpTaxa" name="gdpTaxa" inputmode="decimal" value="<%= it.v.gdpTaxa %>">
+    <% for (const m of erro('gdpTaxa')) { %><p class="erro-campo"><%= m %></p><% } %>
+  </fieldset>
+
+  <fieldset>
+    <legend>Lembretes e fuso</legend>
+    <label class="check"><input type="checkbox" name="lembretesAtivos" value="on" <%= marcado('lembretesAtivos') %>> Lembrar clientes de comprar de novo</label>
+    <label for="fuso">Fuso horário</label>
+    <input id="fuso" name="fuso" value="<%= it.v.fuso %>">
+    <% for (const m of erro('fuso')) { %><p class="erro-campo"><%= m %></p><% } %>
+  </fieldset>
+
+  <button type="submit" class="btn grande">Salvar configurações</button>
+</form>

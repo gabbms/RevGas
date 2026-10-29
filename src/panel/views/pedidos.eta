@@ -1,0 +1,11 @@
+<h1><%= it.titulo %></h1>
+<% if (it.erro) { %><p class="erro" role="alert"><%= it.erro %></p><% } %>
+<div class="filtros">
+  <a href="/painel/pedidos" class="<%= it.filtro === '' ? 'on' : '' %>">Todos</a>
+  <% for (const f of it.filtros) { %>
+    <a href="/painel/pedidos?status=<%= f.id %>" class="<%= it.filtro === f.id ? 'on' : '' %>"><%= f.rotulo %></a>
+  <% } %>
+</div>
+<div id="lista" hx-get="/painel/pedidos/lista<%= it.filtro ? '?status=' + it.filtro : '' %>" hx-trigger="every 10s" hx-swap="innerHTML">
+  <%~ include('_lista', it) %>
+</div>

@@ -1,0 +1,12 @@
+<h1><%= it.titulo %></h1>
+<form method="get" action="/painel/clientes" class="busca">
+  <input type="search" name="q" value="<%= it.q %>" placeholder="Buscar por nome ou telefone" aria-label="Buscar cliente">
+  <button type="submit" class="btn">Buscar</button>
+</form>
+<% if (it.clientes.length === 0) { %><p class="vazio">Nenhum cliente encontrado.</p><% } %>
+<% for (const c of it.clientes) { %>
+  <a class="card item" href="/painel/clientes/<%= c.id %>">
+    <strong><%= c.nome %></strong>
+    <span class="detalhe"><%= c.telefone %></span>
+  </a>
+<% } %>

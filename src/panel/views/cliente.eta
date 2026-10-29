@@ -1,0 +1,22 @@
+<h1><%= it.cliente.nome %></h1>
+<div class="card">
+  <div class="detalhe">Telefone: <strong><%= it.cliente.telefone %></strong></div>
+  <div class="detalhe">Endereço: <strong><%= it.endereco ?? 'não informado' %></strong></div>
+  <div class="detalhe">Próxima recompra: <strong><%= it.proximaRecompra %></strong></div>
+  <div class="detalhe">Lembretes: <%= it.lembretes %></div>
+  <div class="acoes">
+    <a class="btn sec" href="/painel/conversas/<%= it.cliente.id %>">Ver conversa</a>
+  </div>
+</div>
+<h2>Pedidos</h2>
+<% if (it.pedidos.length === 0) { %><p class="vazio">Nenhum pedido ainda.</p><% } %>
+<% for (const p of it.pedidos) { %>
+  <div class="card">
+    <strong>#<%= p.id %></strong> · <%= p.data %> · <%= p.status %>
+    <div class="detalhe"><%= p.resumo %> · <%= p.pagamento %> · <strong><%= p.total %></strong></div>
+  </div>
+<% } %>
+<h2>Excluir dados</h2>
+<form method="post" action="/painel/clientes/<%= it.cliente.id %>/excluir" onsubmit="return confirm('Apagar as mensagens e os dados pessoais deste cliente? Isso não pode ser desfeito.')">
+  <button type="submit" class="btn perigo">Excluir dados do cliente</button>
+</form>

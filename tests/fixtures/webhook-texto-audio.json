@@ -1,0 +1,42 @@
+{
+  "object": "whatsapp_business_account",
+  "entry": [
+    {
+      "id": "1234567890",
+      "changes": [
+        {
+          "field": "messages",
+          "value": {
+            "messaging_product": "whatsapp",
+            "metadata": { "display_phone_number": "558600000000", "phone_number_id": "111222333" },
+            "contacts": [{ "profile": { "name": "Maria" }, "wa_id": "5586999991234" }],
+            "messages": [
+              {
+                "from": "5586999991234",
+                "id": "wamid.T1",
+                "timestamp": "1793624400",
+                "type": "text",
+                "text": { "body": "Quero um gás" },
+                "context": { "from": "558600000000", "id": "wamid.P" }
+              },
+              {
+                "from": "5586999991234",
+                "id": "wamid.A1",
+                "timestamp": "1793624460",
+                "type": "audio",
+                "audio": { "id": "media-audio-1", "mime_type": "audio/ogg; codecs=opus", "voice": true }
+              },
+              {
+                "from": "5586999991234",
+                "id": "wamid.B1",
+                "timestamp": "1793624520",
+                "type": "button",
+                "button": { "payload": "SIM", "text": "Sim, confirmar" }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}
