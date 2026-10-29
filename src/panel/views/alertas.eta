@@ -1,0 +1,14 @@
+<h1><%= it.titulo %></h1>
+<% if (it.alertas.length === 0) { %>
+  <p class="vazio">Nenhum alerta aberto. Tudo certo por aqui.</p>
+<% } %>
+<% for (const a of it.alertas) { %>
+  <article class="alerta">
+    <div class="linha"><strong><%= a.motivo %></strong><span class="hora"><%= a.quando %></span></div>
+    <% if (a.resumo) { %><p><%= a.resumo %></p><% } %>
+    <div class="acoes">
+      <% if (a.clienteId !== null) { %><a class="btn sec" href="/painel/conversas/<%= a.clienteId %>">Ver conversa</a><% } %>
+      <form method="post" action="/painel/alertas/<%= a.id %>/resolver"><button type="submit" class="btn">Resolvido</button></form>
+    </div>
+  </article>
+<% } %>

@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title><%= it.titulo %> · Painel</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <script src="https://unpkg.com/htmx.org@2.0.4" defer></script>
+</head>
+<body>
+  <header class="topo">
+    <strong>Painel</strong>
+    <form method="post" action="/logout"><button class="link" type="submit">Sair</button></form>
+  </header>
+  <nav class="abas">
+    <% for (const n of it.nav) { %>
+      <a href="<%= n.href %>" class="<%= n.id === it.active ? 'on' : '' %>"><%= n.label %><% if (n.id === 'alertas') { %> (<%= it.alertasAbertos %>)<% } %></a>
+    <% } %>
+  </nav>
+  <main>
+    <%~ it.body %>
+  </main>
+</body>
+</html>

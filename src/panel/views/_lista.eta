@@ -1,0 +1,26 @@
+<% if (it.pedidos.length === 0) { %>
+  <p class="vazio">Nenhum pedido hoje ainda.</p>
+<% } %>
+<% for (const p of it.pedidos) { %>
+  <article class="pedido">
+    <div class="linha">
+      <strong>#<%= p.id %></strong>
+      <span class="tag st-<%= p.status %>"><%= p.statusRotulo %></span>
+      <% for (const s of p.selos) { %><span class="tag selo"><%= s %></span><% } %>
+      <span class="hora"><%= p.hora %></span>
+    </div>
+    <div class="cliente"><a href="/painel/conversas/<%= p.clienteId %>"><%= p.cliente %></a></div>
+    <div class="detalhe"><%= p.resumo %> · <%= p.tipo %> · <%= p.pagamento %><% if (p.troco) { %> (troco p/ <%= p.troco %>)<% } %> · <strong><%= p.total %></strong></div>
+    <% if (p.endereco) { %><div class="detalhe"><%= p.endereco %></div><% } %>
+    <% if (p.acoes.length > 0) { %>
+      <div class="acoes">
+        <% for (const a of p.acoes) { %>
+          <form method="post" action="/painel/pedidos/<%= p.id %>/status"<% if (a.perigo) { %> onsubmit="return confirm('Cancelar este pedido?')"<% } %>>
+            <input type="hidden" name="status" value="<%= a.status %>">
+            <button type="submit" class="btn <%= a.perigo ? 'perigo' : '' %>"><%= a.rotulo %></button>
+          </form>
+        <% } %>
+      </div>
+    <% } %>
+  </article>
+<% } %>
