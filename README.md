@@ -61,7 +61,7 @@ Roda 6 cenários (pedido novo com troco, "o de sempre", preço não cadastrado, 
 | `WA_APP_SECRET` | sim | | Segredo do app Meta; valida a assinatura `X-Hub-Signature-256` do webhook. |
 | `WA_VERIFY_TOKEN` | sim | | Texto qualquer que você inventa; a Meta o devolve na verificação do webhook. |
 | `WA_GRAPH_VERSION` | não | `v23.0` | Versão da Graph API. |
-| `WA_TPL_PEDIDO` | não | | Nome do modelo `pedido_novo` aprovado. |
+| `WA_TPL_PEDIDO` | não | | Nome do modelo `aviso_pedido` aprovado. |
 | `WA_TPL_STATUS` | não | | Nome do modelo `status_pedido`. |
 | `WA_TPL_ALERTA` | não | | Nome do modelo `alerta_dono`. |
 | `WA_TPL_LEMBRETE` | não | | Nome do modelo `lembrete_recompra`. |
@@ -100,23 +100,23 @@ Todos em português (BR). O código manda sempre o corpo (`body`) com parâmetro
 
 | Variável | Nome sugerido | Categoria |
 |---|---|---|
-| `WA_TPL_PEDIDO` | `pedido_novo` | Utilidade |
+| `WA_TPL_PEDIDO` | `aviso_pedido` | Utilidade |
 | `WA_TPL_STATUS` | `status_pedido` | Utilidade |
 | `WA_TPL_ALERTA` | `alerta_dono` | Utilidade |
 | `WA_TPL_LEMBRETE` | `lembrete_recompra` | Marketing |
 
-### `pedido_novo` (entregadores e dono)
+### `aviso_pedido` (entregadores e dono)
 
 Parâmetros, nesta ordem:
-- `{{1}}`: resumo completo do pedido em uma linha, com as linhas originais unidas por ` | ` (número, quantidade e valor, pagamento e troco, cliente, endereço, instrução de resposta).
+- `{{1}}`: a mensagem completa em uma linha, com as linhas originais unidas por ` | `. Num pedido novo: número, quantidade e valor, pagamento e troco, cliente, endereço (ou `RETIRADA NA LOJA`) e a instrução de resposta. Numa correção ou cancelamento: o aviso correspondente.
 
 Texto sugerido:
 
 ```
-Novo pedido para entrega. {{1}} Responda a esta mensagem com: saiu, entregue ou problema.
+Aviso de pedido: {{1}} (mensagem automática do bot de pedidos)
 ```
 
-Também é usado para correção e cancelamento de pedido (o texto muda, o modelo é o mesmo).
+O mesmo modelo serve para pedido novo, retirada, correção e cancelamento, por isso o texto fixo é neutro: não diga "novo pedido" nem "para entrega" nele. A instrução de resposta já vem dentro do `{{1}}` quando se aplica. A frase depois da variável existe porque a Meta rejeita modelo que termina com variável.
 
 ### `status_pedido` (cliente)
 
@@ -139,7 +139,7 @@ Parâmetros:
 Texto sugerido:
 
 ```
-Alerta do bot de pedidos: {{1}}. Detalhes: {{2}} Responda "ok" se já resolveu.
+Alerta do bot de pedidos: {{1}}. Detalhes: {{2}} (mensagem automática, não precisa responder)
 ```
 
 ### `lembrete_recompra` (cliente, Marketing)
