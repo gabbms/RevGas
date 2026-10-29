@@ -12,7 +12,9 @@ export interface AppDeps {
 
 export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
   const { env } = deps;
-  const app = Fastify({ logger: deps.logger ?? false });
+  // Atrás do Caddy (no mesmo host), o IP real do cliente vem no X-Forwarded-For; só confiamos no proxy local.
+  // O limitador de login do painel conta tentativas por esse IP.
+  const app = Fastify({ logger: deps.logger ?? false, trustProxy: 'loopback' });
 
   // Corpo cru em Buffer: a assinatura da Meta é calculada sobre os bytes exatos.
   app.addContentTypeParser('application/json', { parseAs: 'buffer' }, (req, body, done) => {

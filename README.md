@@ -70,7 +70,7 @@ Roda 6 cenários (pedido novo com troco, "o de sempre", preço não cadastrado, 
 | `AI_EFFORT` | não | `medium` | `low`, `medium` ou `high`. |
 | `OPENAI_API_KEY` | sim | | Transcrição de áudio. |
 | `TRANSCRIBE_MODEL` | não | `whisper-1` | Modelo de transcrição. |
-| `PANEL_PASSWORD` | sim | | Senha única do painel (o dono). |
+| `PANEL_PASSWORD` | sim | | Senha única do painel (o dono), com 12 caracteres ou mais. Depois de 5 senhas erradas em 15 minutos, o mesmo IP fica bloqueado até a janela passar. |
 | `SESSION_SECRET` | sim | | String aleatória com 32 caracteres ou mais; assina o cookie de sessão. |
 
 Variável vazia conta como ausente. Sem os `WA_TPL_*`, o bot só consegue escrever dentro da janela de 24 horas de quem falou por último com ele; os modelos cobrem o resto (seção 6).

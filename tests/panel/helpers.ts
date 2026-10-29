@@ -25,8 +25,7 @@ export const env = loadEnv({
   SESSION_SECRET: 'x'.repeat(32),
 });
 
-export async function setupPanel(nomeCliente = 'Maria') {
-  const clock = () => SEGUNDA_10H;
+export async function setupPanel(nomeCliente = 'Maria', clock: () => Date = () => SEGUNDA_10H) {
   const db = openDb(':memory:');
   updateSettings(db, {
     ...DEFAULT_SETTINGS,

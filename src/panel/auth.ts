@@ -44,6 +44,30 @@ export const NAV = [
 ] as const;
 export type NavId = (typeof NAV)[number]['id'];
 
+const MAX_FALHAS = 5;
+const JANELA_FALHAS_MS = 15 * 60 * 1000;
+
+/** Limitador em memória: no máximo MAX_FALHAS senhas erradas por IP a cada 15 min. */
+export function createLoginLimiter(clock: () => Date) {
+  const falhas = new Map<string, number[]>();
+  const recentes = (ip: string): number[] => {
+    const limite = clock().getTime() - JANELA_FALHAS_MS;
+    const lista = (falhas.get(ip) ?? []).filter((t) => t > limite);
+    if (lista.length > 0) falhas.set(ip, lista);
+    else falhas.delete(ip);
+    return lista;
+  };
+  return {
+    bloqueado: (ip: string): boolean => recentes(ip).length >= MAX_FALHAS,
+    falhou: (ip: string): void => {
+      falhas.set(ip, [...recentes(ip), clock().getTime()]);
+    },
+    zerar: (ip: string): void => {
+      falhas.delete(ip);
+    },
+  };
+}
+
 const digest = (s: string): Buffer => createHash('sha256').update(s).digest();
 const samePassword = (a: string, b: string): boolean => timingSafeEqual(digest(a), digest(b));
 
@@ -73,6 +97,7 @@ export function renderPage(
 export async function registerPanel(app: FastifyInstance, deps: PanelDeps): Promise<void> {
   const { env } = deps;
   const secure = env.PUBLIC_URL.startsWith('https');
+  const limiter = createLoginLimiter(deps.clock);
 
   await app.register(fastifyCookie, { secret: env.SESSION_SECRET });
   await app.register(fastifyFormbody);
@@ -86,10 +111,19 @@ export async function registerPanel(app: FastifyInstance, deps: PanelDeps): Prom
   });
 
   app.post('/login', async (req, reply) => {
+    const ip = req.ip;
+    if (limiter.bloqueado(ip)) {
+      return reply
+        .code(429)
+        .type('text/html; charset=utf-8')
+        .view('login.eta', { erro: 'Muitas tentativas. Tente de novo em alguns minutos.' });
+    }
     const senha = (req.body as { senha?: unknown } | undefined)?.senha;
     if (typeof senha !== 'string' || !samePassword(senha, env.PANEL_PASSWORD)) {
+      limiter.falhou(ip);
       return reply.code(401).type('text/html; charset=utf-8').view('login.eta', { erro: 'Senha incorreta. Tente de novo.' });
     }
+    limiter.zerar(ip);
     reply.setCookie(COOKIE, SESSION_VALUE, {
       path: '/',
       httpOnly: true,

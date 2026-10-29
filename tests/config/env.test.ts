@@ -9,7 +9,7 @@ const base = {
   WA_VERIFY_TOKEN: 'v',
   ANTHROPIC_API_KEY: 'k',
   OPENAI_API_KEY: 'k',
-  PANEL_PASSWORD: 'p',
+  PANEL_PASSWORD: 'senha-longa-12',
   SESSION_SECRET: 'x'.repeat(32),
 };
 
@@ -28,6 +28,11 @@ describe('loadEnv', () => {
   test('rejeita SESSION_SECRET curto e variável obrigatória ausente', () => {
     expect(() => loadEnv({ ...base, SESSION_SECRET: 'curto' })).toThrow();
     expect(() => loadEnv({ ...base, WA_TOKEN: undefined })).toThrow();
+  });
+
+  test('PANEL_PASSWORD precisa de 12 caracteres ou mais', () => {
+    expect(() => loadEnv({ ...base, PANEL_PASSWORD: '12345678901' })).toThrow();
+    expect(loadEnv({ ...base, PANEL_PASSWORD: '123456789012' }).PANEL_PASSWORD).toBe('123456789012');
   });
 
   test('string vazia em modelo opcional conta como ausente', () => {

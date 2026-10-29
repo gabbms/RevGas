@@ -20,7 +20,7 @@ const EnvSchema = z.object({
   AI_EFFORT: z.enum(['low', 'medium', 'high']).default('medium'),
   OPENAI_API_KEY: z.string().min(1),
   TRANSCRIBE_MODEL: z.string().min(1).default('whisper-1'),
-  PANEL_PASSWORD: z.string().min(1),
+  PANEL_PASSWORD: z.string().min(12),
   SESSION_SECRET: z.string().min(32),
 });
 

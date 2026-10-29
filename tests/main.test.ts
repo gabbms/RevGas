@@ -18,7 +18,7 @@ const env = loadEnv({
   WA_VERIFY_TOKEN: 'VT',
   ANTHROPIC_API_KEY: 'k',
   OPENAI_API_KEY: 'k',
-  PANEL_PASSWORD: 'p',
+  PANEL_PASSWORD: 'senha-longa-12',
   SESSION_SECRET: 'x'.repeat(32),
 });
 const NOW = new Date('2026-11-02T13:00:00Z');

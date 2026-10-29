@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest';
 import { getOrder, insertOrder, type Order } from '../../src/store/orders.js';
-import { form, login, pedidoPadrao, setupPanel } from './helpers.js';
+import { form, login, pedidoPadrao, SEGUNDA_10H, setupPanel } from './helpers.js';
 
 describe('painel: login', () => {
   test('sem sessão redireciona para /login', async () => {
@@ -27,6 +27,32 @@ describe('painel: login', () => {
     expect(res.statusCode).toBe(401);
     expect(res.body).toContain('Senha incorreta');
     expect(res.cookies.find((c) => c.name === 'sessao')).toBeUndefined();
+  });
+
+  test('6ª tentativa errada em 15 min dá 429; depois de 15 min volta a aceitar', async () => {
+    let agora = SEGUNDA_10H;
+    const { app } = await setupPanel('Maria', () => agora);
+    const tentar = (senha: string) => app.inject({ method: 'POST', url: '/login', ...form('', { senha }) });
+    for (let i = 0; i < 5; i++) expect((await tentar('errada')).statusCode).toBe(401);
+    const bloqueada = await tentar('errada');
+    expect(bloqueada.statusCode).toBe(429);
+    expect(bloqueada.body).toContain('Muitas tentativas. Tente de novo em alguns minutos.');
+    // Nem a senha certa entra enquanto está bloqueado.
+    const certaBloqueada = await tentar('senha-do-dono');
+    expect(certaBloqueada.statusCode).toBe(429);
+    expect(certaBloqueada.cookies.find((c) => c.name === 'sessao')).toBeUndefined();
+
+    agora = new Date(SEGUNDA_10H.getTime() + 15 * 60_000 + 1000);
+    expect((await tentar('senha-do-dono')).statusCode).toBe(302);
+  });
+
+  test('login certo zera o contador de tentativas', async () => {
+    const { app } = await setupPanel();
+    const tentar = (senha: string) => app.inject({ method: 'POST', url: '/login', ...form('', { senha }) });
+    for (let i = 0; i < 4; i++) await tentar('errada');
+    expect((await tentar('senha-do-dono')).statusCode).toBe(302);
+    for (let i = 0; i < 5; i++) expect((await tentar('errada')).statusCode).toBe(401);
+    expect((await tentar('errada')).statusCode).toBe(429);
   });
 
   test('login certo dá cookie seguro e a lista mostra #1', async () => {

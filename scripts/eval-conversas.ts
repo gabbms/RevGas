@@ -32,7 +32,7 @@ const env = loadEnv({
   ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY,
   ...(process.env.AI_MODEL ? { AI_MODEL: process.env.AI_MODEL } : {}),
   OPENAI_API_KEY: 'x',
-  PANEL_PASSWORD: 'x',
+  PANEL_PASSWORD: 'x'.repeat(12),
   SESSION_SECRET: 'x'.repeat(32),
 });
 

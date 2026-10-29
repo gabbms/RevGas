@@ -14,7 +14,7 @@ const env = loadEnv({
   WA_VERIFY_TOKEN: 'VT',
   ANTHROPIC_API_KEY: 'k',
   OPENAI_API_KEY: 'k',
-  PANEL_PASSWORD: 'p',
+  PANEL_PASSWORD: 'senha-longa-12',
   SESSION_SECRET: 'x'.repeat(32),
 });
 const body = readFileSync(new URL('./fixtures/webhook-texto-audio.json', import.meta.url));
