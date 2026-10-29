@@ -130,6 +130,37 @@ describe('roteador', () => {
     spy.mockRestore();
   });
 
+  test('falha libera o wamid e a reentrega é processada sem duplicar', async () => {
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    let n = 0;
+    const { db, router, turns } = setup({
+      contentToText: async (e) => {
+        if (n++ === 0) throw new Error('falha transitória');
+        return defaultContentToText(e);
+      },
+    });
+    await router.handle([ev('w1', 'oi')]);
+    await router.idle();
+    expect(db.prepare('SELECT 1 FROM inbound_seen WHERE wamid = ?').get('w1')).toBeUndefined();
+    expect(allMessages(db)).toEqual([]);
+    await router.handle([ev('w1', 'oi')]);
+    await router.idle();
+    expect(allMessages(db)).toHaveLength(1);
+    expect(db.prepare('SELECT 1 FROM inbound_seen WHERE wamid = ?').get('w1')).toBeDefined();
+    expect(turns).toHaveLength(1);
+    spy.mockRestore();
+  });
+
+  test('falha ao gravar não deixa mensagem pela metade', async () => {
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const { db, router } = setup();
+    db.exec("CREATE TRIGGER falha BEFORE UPDATE OF ultima_mensagem_em ON customers BEGIN SELECT RAISE(ABORT, 'x'); END");
+    await router.handle([ev('w1', 'oi')]);
+    expect(allMessages(db)).toEqual([]);
+    expect(db.prepare('SELECT 1 FROM inbound_seen WHERE wamid = ?').get('w1')).toBeUndefined();
+    spy.mockRestore();
+  });
+
   test('várias mensagens seguidas geram um único turno (debounce)', async () => {
     vi.useFakeTimers();
     try {

@@ -40,6 +40,8 @@ export function createInboundRouter(deps: RouterDeps) {
   const debouncer = createKeyedDebouncer(deps.debounceMs);
   const markSeen = db.prepare('INSERT OR IGNORE INTO inbound_seen (wamid, em) VALUES (?, ?)');
 
+  const unmarkSeen = db.prepare('DELETE FROM inbound_seen WHERE wamid = ?');
+
   async function handleOne(ev: InboundEvent): Promise<void> {
     if (markSeen.run(ev.wamid, ev.em.toISOString()).changes === 0) return;
     outbox.registerInbound(ev.de, ev.em);
@@ -56,15 +58,18 @@ export function createInboundRouter(deps: RouterDeps) {
     if (!content) return;
 
     const { texto } = redactSensitive(content.texto, { contextoGasDoPovo: deps.hasGasDoPovoContext(customer.id) });
-    insertMessage(db, {
-      clienteId: customer.id,
-      autor: 'cliente',
-      tipo: content.tipo,
-      texto,
-      wamid: ev.wamid,
-      criadoEm: ev.em.toISOString(),
-    });
-    customer = updateCustomer(db, customer.id, { ultimaMensagemEm: ev.em.toISOString() });
+    const customerId = customer.id;
+    customer = db.transaction(() => {
+      insertMessage(db, {
+        clienteId: customerId,
+        autor: 'cliente',
+        tipo: content.tipo,
+        texto,
+        wamid: ev.wamid,
+        criadoEm: ev.em.toISOString(),
+      });
+      return updateCustomer(db, customerId, { ultimaMensagemEm: ev.em.toISOString() });
+    })();
 
     if (customer.botPausadoAte && new Date(customer.botPausadoAte) > clock()) return;
 
@@ -77,6 +82,12 @@ export function createInboundRouter(deps: RouterDeps) {
       try {
         await handleOne(ev);
       } catch (err) {
+        // Libera o wamid para que uma reentrega da Meta seja processada.
+        try {
+          unmarkSeen.run(ev.wamid);
+        } catch {
+          /* melhor esforço */
+        }
         // Sem dado pessoal: só o identificador da mensagem e o tipo do erro.
         console.error('roteador: erro ao processar mensagem', ev.wamid, err instanceof Error ? err.name : 'erro');
       }
