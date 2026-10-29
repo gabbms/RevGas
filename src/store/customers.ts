@@ -98,7 +98,7 @@ export function listCustomers(db: Db): Customer[] {
 }
 
 /**
- * Exclusão de dados (LGPD), numa transação: apaga mensagens, rascunhos e alertas, zera o endereço dos
+ * Exclusão de dados (LGPD), numa transação: apaga mensagens, rascunhos, alertas e comprovantes pendentes, zera o endereço dos
  * pedidos e anonimiza o cliente. As linhas de `order_messages` ficam: guardam telefones de entregadores.
  */
 export function deleteCustomerData(db: Db, id: number): void {
@@ -108,6 +108,7 @@ export function deleteCustomerData(db: Db, id: number): void {
     db.prepare('DELETE FROM messages WHERE cliente_id = ?').run(id);
     db.prepare('DELETE FROM drafts WHERE cliente_id = ?').run(id);
     db.prepare('DELETE FROM alerts WHERE cliente_id = ?').run(id);
+    db.prepare('DELETE FROM pending_receipts WHERE cliente_id = ?').run(id);
     db.prepare('DELETE FROM contact_windows WHERE telefone = ?').run(c.telefone);
     db.prepare('UPDATE orders SET endereco_json = NULL WHERE cliente_id = ?').run(id);
     db.prepare(

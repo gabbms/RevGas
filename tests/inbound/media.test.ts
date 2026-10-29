@@ -1,7 +1,11 @@
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import type { Transcriber } from '../../src/audio/transcriber.js';
+import { createAlertService } from '../../src/alerts/service.js';
 import { openDb } from '../../src/db/connection.js';
 import { createContentToText } from '../../src/inbound/media.js';
+import { createDraft } from '../../src/store/drafts.js';
+import { receiptsFor } from '../../src/store/receipts.js';
+import { getSettings } from '../../src/store/settings.js';
 import { createInboundRouter, defaultContentToText } from '../../src/inbound/router.js';
 import { upsertCustomerByPhone } from '../../src/store/customers.js';
 import { insertOrder, recordOrderMessage, type Order } from '../../src/store/orders.js';
@@ -22,7 +26,8 @@ function setup(transcribe: Transcriber['transcribe'] = async () => 'quero um gá
   const outbox = createOutbox(db, fake, () => now);
   const customer = upsertCustomerByPhone(db, CLIENTE, now);
   outbox.registerInbound(CLIENTE, now);
-  const contentToText = createContentToText({ db, api: fake, transcriber: { transcribe }, outbox, clock: () => now });
+  const alerts = createAlertService({ db, outbox, settings: () => getSettings(db), publicUrl: 'https://loja.exemplo', clock: () => now });
+  const contentToText = createContentToText({ db, api: fake, transcriber: { transcribe }, outbox, alerts, clock: () => now });
   const mkOrder = (pagamento: Order['pagamento'], status: Order['status'] = 'recebido') =>
     insertOrder(db, {
       clienteId: customer.id, tipo: 'entrega', quantidade: 1, modo: 'troca', pagamento, trocoParaCentavos: null,
@@ -30,7 +35,7 @@ function setup(transcribe: Transcriber['transcribe'] = async () => 'quero um gá
       status, entregadorTelefone: null, precisaRevisao: false, criadoEm: now.toISOString(),
       enviadoEm: null, saiuEm: null, finalizadoEm: null,
     });
-  return { db, fake, outbox, customer, contentToText, mkOrder };
+  return { db, fake, outbox, alerts, customer, contentToText, mkOrder };
 }
 
 const audioEv = (wamid = 'wa1'): InboundEvent => ({
@@ -131,7 +136,7 @@ describe('comprovante Pix', () => {
 
   test('um envio que falha não impede os demais; todos falhando devolve o texto de falha', async () => {
     vi.spyOn(console, 'error').mockImplementation(() => {});
-    const { db, fake, contentToText, customer, mkOrder } = setup();
+    const { db, fake, alerts, contentToText, customer, mkOrder } = setup();
     const o = mkOrder('pix_antecipado');
     recordOrderMessage(db, 'x1', o.id, JOAO);
     recordOrderMessage(db, 'x2', o.id, PEDRO);
@@ -149,8 +154,49 @@ describe('comprovante Pix', () => {
     fake.sendMedia = async () => {
       throw new Error('falhou');
     };
+    expect(alerts.listOpen()).toEqual([]);
     const r2 = await contentToText(imgEv(), customer);
     expect(r2?.texto).toBe(`[cliente enviou comprovante Pix; não foi possível repassar ao pedido #${o.id}]`);
+    expect(alerts.listOpen()).toHaveLength(1);
+    expect(alerts.listOpen()[0]).toMatchObject({
+      motivo: 'Comprovante Pix não repassado',
+      pedidoId: o.id,
+      clienteId: customer.id,
+      resumo: 'O cliente mandou comprovante, mas não consegui enviar aos entregadores.',
+    });
+  });
+
+  test('antes do pedido, com rascunho Pix antecipado recente, o comprovante fica guardado', async () => {
+    const { db, fake, contentToText, customer } = setup();
+    createDraft(db, customer.id, { quantidade: 1, modo: 'troca', pagamento: 'pix_antecipado' }, 11500, new Date(now.getTime() - 30 * 60_000));
+    fake.media.set('m2', { data: Buffer.from('jpg'), mime: 'image/jpeg' });
+    expect(await contentToText(imgEv(), customer)).toEqual({
+      tipo: 'imagem',
+      texto: '[cliente enviou comprovante Pix; será repassado com o pedido]',
+    });
+    expect(fake.uploads).toHaveLength(1);
+    expect(fake.sent).toEqual([]);
+    expect(receiptsFor(db, customer.id)).toMatchObject([
+      { clienteId: customer.id, mediaId: 'media.1', kind: 'image', recebidoEm: now.toISOString(), repassadoEm: null },
+    ]);
+  });
+
+  test('pedido Pix antecipado agendado também guarda o comprovante', async () => {
+    const { db, fake, contentToText, customer, mkOrder } = setup();
+    mkOrder('pix_antecipado', 'agendado');
+    fake.media.set('m2', { data: Buffer.from('pdf'), mime: 'application/pdf' });
+    const r = await contentToText(imgEv('documento'), customer);
+    expect(r?.texto).toBe('[cliente enviou comprovante Pix; será repassado com o pedido]');
+    expect(receiptsFor(db, customer.id).map((x) => x.kind)).toEqual(['document']);
+  });
+
+  test('rascunho Pix velho (mais de 2h) ou de outro pagamento não guarda', async () => {
+    const { db, fake, contentToText, customer } = setup();
+    fake.media.set('m2', { data: Buffer.from('jpg'), mime: 'image/jpeg' });
+    createDraft(db, customer.id, { quantidade: 1, modo: 'troca', pagamento: 'pix_antecipado' }, 11500, new Date(now.getTime() - 3 * 3600_000));
+    createDraft(db, customer.id, { quantidade: 1, modo: 'troca', pagamento: 'cartao' }, 11500, now);
+    expect(await contentToText(imgEv(), customer)).toEqual(defaultContentToText(imgEv()));
+    expect(receiptsFor(db, customer.id)).toEqual([]);
   });
 
   test('sem pedido pix_antecipado aberto, ou com ele finalizado, cai no padrão', async () => {

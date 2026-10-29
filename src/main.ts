@@ -10,7 +10,7 @@ import { openDb, type Db } from './db/connection.js';
 import { normalizeText } from './domain/order-validation.js';
 import { runReminderJob } from './domain/reminders.js';
 import { isStaffPhone } from './domain/staff-replies.js';
-import { createContentToText } from './inbound/media.js';
+import { createContentToText, createReceiptForwarder } from './inbound/media.js';
 import { createInboundRouter } from './inbound/router.js';
 import { startScheduler } from './jobs/scheduler.js';
 import { createWhatsAppDispatcher } from './orders/dispatcher.js';
@@ -91,6 +91,7 @@ export async function createAppContext(env: Env, overrides: AppOverrides = {}): 
     settings,
     clock,
     ...(env.WA_TPL_STATUS ? { templateStatus: env.WA_TPL_STATUS } : {}),
+    forwardPendingReceipts: createReceiptForwarder({ db, api, alerts, clock }),
   });
   const handleStaff = createStaffHandler({ db, orders, alerts, outbox, settings });
 
@@ -126,7 +127,7 @@ export async function createAppContext(env: Env, overrides: AppOverrides = {}): 
     clock,
     isStaff: (telefone) => isStaffPhone(settings(), telefone),
     handleStaff,
-    contentToText: createContentToText({ db, api, transcriber, outbox, clock }),
+    contentToText: createContentToText({ db, api, transcriber, outbox, alerts, clock }),
     onCustomerTurn,
     hasGasDoPovoContext,
     debounceMs: 2500,

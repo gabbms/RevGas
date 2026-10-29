@@ -54,7 +54,7 @@ const fromRow = (r: Row): Draft => ({
   substituidoEm: r.substituido_em,
 });
 
-const GAS_DO_POVO_WINDOW_MS = 2 * 60 * 60 * 1000;
+const RECENT_DRAFT_WINDOW_MS = 2 * 60 * 60 * 1000;
 
 export function createDraft(
   db: Db,
@@ -105,11 +105,21 @@ export function markDraftsPresented(db: Db, clienteId: number, at: Date): void {
   ).run(at.toISOString(), clienteId);
 }
 
-/** Há rascunho não consumido, de até 2h, pago com Gás do Povo? */
-export function hasRecentGasDoPovoDraft(db: Db, clienteId: number, now: Date): boolean {
-  const since = new Date(now.getTime() - GAS_DO_POVO_WINDOW_MS).toISOString();
+/** Há rascunho aberto (não consumido nem substituído), de até 2h, com este pagamento? */
+function hasRecentOpenDraftPaidWith(db: Db, clienteId: number, pagamento: OrderRequest['pagamento'], now: Date): boolean {
+  const since = new Date(now.getTime() - RECENT_DRAFT_WINDOW_MS).toISOString();
   const rows = db
     .prepare('SELECT * FROM drafts WHERE cliente_id = ? AND consumido_em IS NULL AND criado_em >= ?')
     .all(clienteId, since) as Row[];
-  return rows.some((r) => fromRow(r).request.pagamento === 'gas_do_povo');
+  return rows.some((r) => fromRow(r).request.pagamento === pagamento);
+}
+
+/** Há rascunho não consumido, de até 2h, pago com Gás do Povo? */
+export function hasRecentGasDoPovoDraft(db: Db, clienteId: number, now: Date): boolean {
+  return hasRecentOpenDraftPaidWith(db, clienteId, 'gas_do_povo', now);
+}
+
+/** Há rascunho não consumido, de até 2h, com Pix antecipado? (o comprovante pode chegar antes do "sim") */
+export function hasRecentPixAntecipadoDraft(db: Db, clienteId: number, now: Date): boolean {
+  return hasRecentOpenDraftPaidWith(db, clienteId, 'pix_antecipado', now);
 }

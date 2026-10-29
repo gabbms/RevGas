@@ -70,6 +70,8 @@ export function createOrderService(d: {
   settings: () => StoreSettings;
   clock: () => Date;
   templateStatus?: string;
+  /** Repassa aos entregadores os comprovantes Pix que o cliente mandou antes do despacho. */
+  forwardPendingReceipts?(order: Order): Promise<void>;
 }) {
   const { db } = d;
 
@@ -112,10 +114,24 @@ export function createOrderService(d: {
   async function dispatchNew(o: Order): Promise<Order> {
     const c = mustGetCustomer(o.clienteId);
     await delivered(o, () => d.dispatcher.novo(o, c));
-    if (orderRecipients(db, o.id).length > 0) return mustGetOrder(o.id);
+    if (orderRecipients(db, o.id).length > 0) {
+      await forwardReceipts(o);
+      return mustGetOrder(o.id);
+    }
     const after = updateOrder(db, o.id, { enviadoEm: null });
     await alert(after, `Pedido #${o.id} não chegou aos entregadores`, 'Nenhum envio deu certo. Repasse o pedido manualmente.');
+    await forwardReceipts(after);
     return after;
+  }
+
+  /** Depois do pedido, os comprovantes Pix guardados (o repasse alerta o dono se nada sair). */
+  async function forwardReceipts(o: Order): Promise<void> {
+    if (o.pagamento !== 'pix_antecipado' || !d.forwardPendingReceipts) return;
+    try {
+      await d.forwardPendingReceipts(o);
+    } catch (err) {
+      console.error('pedidos: falha ao repassar comprovantes', o.id, err instanceof Error ? err.message : 'erro');
+    }
   }
 
   async function create(
