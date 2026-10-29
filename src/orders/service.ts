@@ -17,6 +17,7 @@ import {
   updateOrder,
   type Order,
 } from '../store/orders.js';
+import { attachOpenDraftReceipts } from '../store/receipts.js';
 import type { StoreSettings } from '../store/settings.js';
 import type { createOutbox } from '../whatsapp/outbox.js';
 import { formatAddress, type OrderDispatcher } from './dispatcher.js';
@@ -161,6 +162,8 @@ export function createOrderService(d: {
       saiuEm: null,
       finalizadoEm: null,
     });
+    // Comprovantes que o cliente mandou com o rascunho aberto passam a ser deste pedido.
+    if (order.pagamento === 'pix_antecipado') attachOpenDraftReceipts(db, clienteId, order.id);
 
     if (order.status === 'recebido') order = await dispatchNew(order);
     if (order.precisaRevisao) {

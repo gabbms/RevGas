@@ -12,10 +12,12 @@ import {
   consumeDraft,
   createDraft,
   getDraft,
+  RECENT_DRAFT_WINDOW_MS,
   supersedeOpenDrafts,
   type DraftConditions,
 } from '../store/drafts.js';
 import { getOrder, lastOrderFor, type Order } from '../store/orders.js';
+import { moveReceiptsToDraft } from '../store/receipts.js';
 import type { StoreSettings } from '../store/settings.js';
 
 export interface ToolContext {
@@ -242,6 +244,8 @@ export function createToolHandlers(ctx: ToolContext) {
     // Só o resumo mais recente pode ser confirmado.
     supersedeOpenDrafts(db, clienteId, now);
     const draft = createDraft(db, clienteId, full, v.quote.totalCentavos, now, draftConditions(s, full, v.agendado));
+    // Comprovante Pix mandado com o resumo anterior continua valendo para o resumo novo.
+    if (full.pagamento === 'pix_antecipado') moveReceiptsToDraft(db, clienteId, draft.id, now, RECENT_DRAFT_WINDOW_MS);
     const proximaAbertura = v.agendado ? nextOpeningLabel(s, now) : undefined;
     return {
       rascunhoId: draft.id,

@@ -106,9 +106,10 @@ export function deleteCustomerData(db: Db, id: number): void {
     const c = db.prepare('SELECT telefone FROM customers WHERE id = ?').get(id) as { telefone: string } | undefined;
     if (!c) return;
     db.prepare('DELETE FROM messages WHERE cliente_id = ?').run(id);
+    // Os comprovantes antes dos rascunhos: apontam para eles.
+    db.prepare('DELETE FROM pending_receipts WHERE cliente_id = ?').run(id);
     db.prepare('DELETE FROM drafts WHERE cliente_id = ?').run(id);
     db.prepare('DELETE FROM alerts WHERE cliente_id = ?').run(id);
-    db.prepare('DELETE FROM pending_receipts WHERE cliente_id = ?').run(id);
     db.prepare('DELETE FROM contact_windows WHERE telefone = ?').run(c.telefone);
     db.prepare('UPDATE orders SET endereco_json = NULL WHERE cliente_id = ?').run(id);
     db.prepare(

@@ -104,24 +104,16 @@ describe('createAppContext', () => {
     await ctx.app.close();
   });
 
-  test('hasGasDoPovoContext: mensagem do cliente nas últimas 2h mencionando Gás do Povo', async () => {
+  test('hasGasDoPovoContext: só mencionar Gás do Povo não basta (o número da casa não é apagado)', async () => {
     const fake = new FakeWhatsApp();
     const ctx = await createAppContext(env, { api: fake, anthropic: fakeAnthropic('ok'), clock: () => NOW });
     contexts.push(ctx);
-    const msg = (clienteId: number, autor: 'cliente' | 'bot', texto: string, minutosAtras: number) =>
-      insertMessage(ctx.db, {
-        clienteId, autor, tipo: 'texto', texto, wamid: null,
-        criadoEm: new Date(NOW.getTime() - minutosAtras * 60_000).toISOString(),
-      });
-
     const a = upsertCustomerByPhone(ctx.db, '5586900000003', NOW);
-    msg(a.id, 'cliente', 'Quero usar o GÁS DO POVO', 30);
-    expect(ctx.hasGasDoPovoContext(a.id)).toBe(true);
-
-    const b = upsertCustomerByPhone(ctx.db, '5586900000004', NOW);
-    msg(b.id, 'cliente', 'quero pelo gas do povo', 3 * 60); // antigo demais
-    msg(b.id, 'bot', 'Aceitamos Gás do Povo!', 10); // do bot não conta
-    expect(ctx.hasGasDoPovoContext(b.id)).toBe(false);
+    insertMessage(ctx.db, {
+      clienteId: a.id, autor: 'cliente', tipo: 'texto', texto: 'Quero usar o GÁS DO POVO', wamid: null,
+      criadoEm: new Date(NOW.getTime() - 5 * 60_000).toISOString(),
+    });
+    expect(ctx.hasGasDoPovoContext(a.id)).toBe(false);
     await ctx.app.close();
   });
 });

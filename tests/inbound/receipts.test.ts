@@ -5,8 +5,8 @@ import { createContentToText, createReceiptForwarder } from '../../src/inbound/m
 import { createWhatsAppDispatcher } from '../../src/orders/dispatcher.js';
 import { createOrderService } from '../../src/orders/service.js';
 import { deleteCustomerData, updateCustomer, upsertCustomerByPhone } from '../../src/store/customers.js';
-import { createDraft } from '../../src/store/drafts.js';
-import { receiptsFor } from '../../src/store/receipts.js';
+import { createDraft, RECENT_DRAFT_WINDOW_MS, supersedeOpenDrafts } from '../../src/store/drafts.js';
+import { moveReceiptsToDraft, receiptsFor } from '../../src/store/receipts.js';
 import { DEFAULT_SETTINGS, getSettings, updateSettings } from '../../src/store/settings.js';
 import { createOutbox } from '../../src/whatsapp/outbox.js';
 import type { InboundEvent } from '../../src/whatsapp/webhook.js';
@@ -153,5 +153,56 @@ describe('comprovante Pix pendente', () => {
     expect(receiptsFor(s.db, s.cliente.id)).toHaveLength(1);
     deleteCustomerData(s.db, s.cliente.id);
     expect(receiptsFor(s.db, s.cliente.id)).toEqual([]);
+  });
+
+  test('comprovante de um resumo abandonado não vai para um pedido Pix de outro dia', async () => {
+    const s = setup(SEGUNDA_10H);
+    createDraft(s.db, s.cliente.id, s.pedidoPix, 11500, SEGUNDA_10H);
+    await s.contentToText(s.comprovante, s.cliente);
+    // O cliente troca para dinheiro: o resumo Pix é substituído e o pedido sai em dinheiro.
+    supersedeOpenDrafts(s.db, s.cliente.id, SEGUNDA_10H);
+    createDraft(s.db, s.cliente.id, { ...s.pedidoPix, pagamento: 'dinheiro' }, 11500, SEGUNDA_10H);
+    await s.orders.create(s.cliente.id, { ...s.pedidoPix, pagamento: 'dinheiro' });
+
+    // Dias depois, um pedido Pix novo não leva o comprovante antigo.
+    const depois = new Date(SEGUNDA_10H.getTime() + 3 * 24 * 60 * 60 * 1000);
+    s.setTime(depois);
+    supersedeOpenDrafts(s.db, s.cliente.id, depois);
+    createDraft(s.db, s.cliente.id, s.pedidoPix, 11500, depois);
+    const r = await s.orders.create(s.cliente.id, s.pedidoPix);
+    if (!r.ok) throw new Error(r.erros.join('; '));
+    expect(midias(s.fake)).toEqual([]);
+    expect(receiptsFor(s.db, s.cliente.id)[0]!.repassadoEm).toBeNull();
+  });
+
+  test('resumo Pix refeito (ex.: mudou a quantidade) mantém o comprovante', async () => {
+    const s = setup(SEGUNDA_10H);
+    createDraft(s.db, s.cliente.id, s.pedidoPix, 11500, SEGUNDA_10H);
+    await s.contentToText(s.comprovante, s.cliente);
+    supersedeOpenDrafts(s.db, s.cliente.id, SEGUNDA_10H);
+    const novo = createDraft(s.db, s.cliente.id, { ...s.pedidoPix, quantidade: 2 }, 23000, SEGUNDA_10H);
+    moveReceiptsToDraft(s.db, s.cliente.id, novo.id, SEGUNDA_10H, RECENT_DRAFT_WINDOW_MS);
+
+    const r = await s.orders.create(s.cliente.id, { ...s.pedidoPix, quantidade: 2 });
+    if (!r.ok) throw new Error(r.erros.join('; '));
+    expect(midias(s.fake).map((m) => m.to)).toEqual([JOAO, PEDRO]);
+  });
+
+  test('comprovante de pedido Pix que não chegou aos entregadores: alerta ao dono', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const s = setup(SEGUNDA_10H);
+    const sendText = s.fake.sendText.bind(s.fake);
+    s.fake.sendText = async () => {
+      throw new Error('falhou');
+    };
+    const r = await s.orders.create(s.cliente.id, s.pedidoPix);
+    if (!r.ok) throw new Error(r.erros.join('; '));
+    s.fake.sendText = sendText;
+    expect(r.order.status).toBe('recebido');
+
+    expect((await s.contentToText(s.comprovante, s.cliente))?.texto).toBe(
+      `[cliente enviou comprovante Pix; o pedido #${r.order.id} ainda não chegou aos entregadores]`,
+    );
+    expect(s.alerts.listOpen().map((a) => a.motivo)).toContain('Comprovante Pix de pedido sem entregador');
   });
 });

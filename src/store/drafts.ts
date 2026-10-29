@@ -54,7 +54,7 @@ const fromRow = (r: Row): Draft => ({
   substituidoEm: r.substituido_em,
 });
 
-const RECENT_DRAFT_WINDOW_MS = 2 * 60 * 60 * 1000;
+export const RECENT_DRAFT_WINDOW_MS = 2 * 60 * 60 * 1000;
 
 export function createDraft(
   db: Db,
@@ -105,21 +105,21 @@ export function markDraftsPresented(db: Db, clienteId: number, at: Date): void {
   ).run(at.toISOString(), clienteId);
 }
 
-/** Há rascunho aberto (não consumido nem substituído), de até 2h, com este pagamento? */
-function hasRecentOpenDraftPaidWith(db: Db, clienteId: number, pagamento: OrderRequest['pagamento'], now: Date): boolean {
+/** Rascunho aberto (não consumido nem substituído), de até 2h, com este pagamento; o mais novo. */
+function recentOpenDraftPaidWith(db: Db, clienteId: number, pagamento: OrderRequest['pagamento'], now: Date): Draft | null {
   const since = new Date(now.getTime() - RECENT_DRAFT_WINDOW_MS).toISOString();
   const rows = db
-    .prepare('SELECT * FROM drafts WHERE cliente_id = ? AND consumido_em IS NULL AND criado_em >= ?')
+    .prepare('SELECT * FROM drafts WHERE cliente_id = ? AND consumido_em IS NULL AND criado_em >= ? ORDER BY id DESC')
     .all(clienteId, since) as Row[];
-  return rows.some((r) => fromRow(r).request.pagamento === pagamento);
+  return rows.map(fromRow).find((d) => d.request.pagamento === pagamento) ?? null;
 }
 
 /** Há rascunho não consumido, de até 2h, pago com Gás do Povo? */
 export function hasRecentGasDoPovoDraft(db: Db, clienteId: number, now: Date): boolean {
-  return hasRecentOpenDraftPaidWith(db, clienteId, 'gas_do_povo', now);
+  return recentOpenDraftPaidWith(db, clienteId, 'gas_do_povo', now) !== null;
 }
 
-/** Há rascunho não consumido, de até 2h, com Pix antecipado? (o comprovante pode chegar antes do "sim") */
-export function hasRecentPixAntecipadoDraft(db: Db, clienteId: number, now: Date): boolean {
-  return hasRecentOpenDraftPaidWith(db, clienteId, 'pix_antecipado', now);
+/** Rascunho não consumido, de até 2h, com Pix antecipado (o comprovante pode chegar antes do "sim"). */
+export function recentPixAntecipadoDraft(db: Db, clienteId: number, now: Date): Draft | null {
+  return recentOpenDraftPaidWith(db, clienteId, 'pix_antecipado', now);
 }

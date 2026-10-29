@@ -2,10 +2,10 @@ import type { AlertService } from '../alerts/service.js';
 import { baseMime, type Transcriber } from '../audio/transcriber.js';
 import type { Db } from '../db/connection.js';
 import type { Customer } from '../store/customers.js';
-import { hasRecentPixAntecipadoDraft } from '../store/drafts.js';
+import { recentPixAntecipadoDraft } from '../store/drafts.js';
 import { insertMessage } from '../store/messages.js';
 import { openOrdersFor, orderRecipients, type Order } from '../store/orders.js';
-import { insertPendingReceipt, markReceiptForwarded, pendingReceiptsFor } from '../store/receipts.js';
+import { insertPendingReceipt, markReceiptForwarded, pendingReceiptsForOrder } from '../store/receipts.js';
 import type { WhatsAppApi } from '../whatsapp/api.js';
 import type { createOutbox } from '../whatsapp/outbox.js';
 import type { InboundEvent } from '../whatsapp/webhook.js';
@@ -49,13 +49,13 @@ async function sendReceipt(d: ReceiptDeps, order: Order, kind: 'image' | 'docume
 
 /**
  * Repasse, no despacho de um pedido Pix antecipado, dos comprovantes que o cliente mandou antes
- * (com o rascunho aberto ou com o pedido agendado). Cada comprovante é tratado uma vez só:
+ * para ESTE pedido (com o rascunho dele aberto, ou com ele agendado). Cada comprovante é tratado uma vez só:
  * se nenhum envio deu certo, o dono recebe o alerta e o comprovante não volta para outro pedido.
  */
 export function createReceiptForwarder(d: ReceiptDeps & { clock?: () => Date }): (order: Order) => Promise<void> {
   const clock = d.clock ?? (() => new Date());
   return async (order) => {
-    for (const r of pendingReceiptsFor(d.db, order.clienteId)) {
+    for (const r of pendingReceiptsForOrder(d.db, order.id)) {
       await sendReceipt(d, order, r.kind, r.mediaId);
       markReceiptForwarded(d.db, r.id, clock());
     }
@@ -138,15 +138,46 @@ export function createContentToText(d: {
           };
         } catch (err) {
           console.error('comprovante: falha ao baixar ou enviar mídia', order.id, errName(err));
+          return defaultContentToText(ev);
         }
-      } else if (pix.some((o) => o.status === 'agendado') || hasRecentPixAntecipadoDraft(d.db, c.id, clock())) {
-        // Pedido ainda não foi aos entregadores: guarda para repassar no despacho.
+      }
+
+      const agendado = pix.filter((o) => o.status === 'agendado').at(-1);
+      const rascunho = agendado ? null : recentPixAntecipadoDraft(d.db, c.id, clock());
+      if (agendado || rascunho) {
+        // Pedido ainda não foi aos entregadores: guarda, ligado a ele, para repassar no despacho.
         try {
           const mediaId = await reupload(content);
-          insertPendingReceipt(d.db, { clienteId: c.id, mediaId, kind, recebidoEm: clock().toISOString() });
+          insertPendingReceipt(d.db, {
+            clienteId: c.id,
+            mediaId,
+            kind,
+            recebidoEm: clock().toISOString(),
+            rascunhoId: rascunho?.id ?? null,
+            pedidoId: agendado?.id ?? null,
+          });
           return { tipo: content.tipo, texto: '[cliente enviou comprovante Pix; será repassado com o pedido]' };
         } catch (err) {
           console.error('comprovante: falha ao baixar ou guardar mídia', c.id, errName(err));
+        }
+      } else {
+        // Pedido Pix que não chegou a nenhum entregador (o dono já foi alertado do pedido): avisa do comprovante também.
+        const semDestino = pix.filter((o) => o.status === 'recebido').at(-1);
+        if (semDestino) {
+          try {
+            await d.alerts.create({
+              motivo: 'Comprovante Pix de pedido sem entregador',
+              pedidoId: semDestino.id,
+              clienteId: c.id,
+              resumo: `O cliente mandou comprovante do pedido #${semDestino.id}, que não chegou aos entregadores. Veja a conversa.`,
+            });
+          } catch (err) {
+            console.error('comprovante: falha ao criar alerta', semDestino.id, errName(err));
+          }
+          return {
+            tipo: content.tipo,
+            texto: `[cliente enviou comprovante Pix; o pedido #${semDestino.id} ainda não chegou aos entregadores]`,
+          };
         }
       }
     }

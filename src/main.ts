@@ -7,7 +7,6 @@ import { createAlertService } from './alerts/service.js';
 import { createOpenAITranscriber, type Transcriber } from './audio/transcriber.js';
 import { loadEnv, warnMissingTemplates, type Env } from './config/env.js';
 import { openDb, type Db } from './db/connection.js';
-import { normalizeText } from './domain/order-validation.js';
 import { runReminderJob } from './domain/reminders.js';
 import { isStaffPhone } from './domain/staff-replies.js';
 import { createContentToText, createReceiptForwarder } from './inbound/media.js';
@@ -19,7 +18,6 @@ import { createStaffHandler } from './orders/staff.js';
 import { registerPanel } from './panel/auth.js';
 import { buildApp } from './server.js';
 import { hasRecentGasDoPovoDraft } from './store/drafts.js';
-import { recentMessages } from './store/messages.js';
 import { openOrdersFor } from './store/orders.js';
 import { getSettings } from './store/settings.js';
 import { createWhatsAppApi, type WhatsAppApi } from './whatsapp/api.js';
@@ -113,13 +111,12 @@ export async function createAppContext(env: Env, overrides: AppOverrides = {}): 
   });
   const onCustomerTurn = createCustomerTurnHandler({ db, agent, outbox, alerts, clock });
 
-  const GAS_DO_POVO_JANELA_MS = 2 * 60 * 60 * 1000;
+  // Só rascunho ou pedido aberto com Gás do Povo: nessa hora o endereço já foi coletado, e uma
+  // mensagem só com dígitos é o código do SMS. Uma simples menção ao programa não basta, senão
+  // o número da casa ("1250") seria apagado durante a coleta do endereço.
   const hasGasDoPovoContext = (clienteId: number): boolean =>
     hasRecentGasDoPovoDraft(db, clienteId, clock()) ||
-    openOrdersFor(db, clienteId).some((o) => o.pagamento === 'gas_do_povo') ||
-    recentMessages(db, clienteId, new Date(clock().getTime() - GAS_DO_POVO_JANELA_MS)).some(
-      (m) => m.autor === 'cliente' && normalizeText(m.texto).includes('gas do povo'),
-    );
+    openOrdersFor(db, clienteId).some((o) => o.pagamento === 'gas_do_povo');
 
   const router = createInboundRouter({
     db,
