@@ -12,6 +12,10 @@ describe('parseStaffReply', () => {
     ['endereço errado', 'problema'],
     ['não tem ninguém', 'problema'],
     ['bom dia', null],
+    ['que lindo', null],
+    ['frota', null],
+    ['indo', 'saiu'],
+    ['na rota', 'saiu'],
     ['', null],
   ])('%s → %s', (t, r) => expect(parseStaffReply(t)).toBe(r));
 

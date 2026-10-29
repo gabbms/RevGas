@@ -1,12 +1,22 @@
 import type { AlertService } from '../alerts/service.js';
 import type { Db } from '../db/connection.js';
 import { parseStaffReply } from '../domain/staff-replies.js';
+import type { OrderStatus } from '../domain/types.js';
 import { samePhone } from '../domain/phone.js';
 import { activeOrdersSentTo, orderByMessage, type Order } from '../store/orders.js';
 import type { StoreSettings } from '../store/settings.js';
 import type { InboundEvent } from '../whatsapp/webhook.js';
 import type { createOutbox } from '../whatsapp/outbox.js';
 import { InvalidTransitionError, type OrderService } from './service.js';
+
+const STATUS_LABEL: Record<OrderStatus, string> = {
+  saiu: 'já saiu',
+  entregue: 'já foi entregue',
+  retirado: 'já foi retirado',
+  cancelado: 'foi cancelado',
+  recebido: 'ainda não saiu',
+  agendado: 'está agendado',
+};
 
 const ORIENTACAO = 'Responda (deslizando) a mensagem do pedido com: saiu, entregue ou problema.';
 
@@ -41,8 +51,8 @@ export function createStaffHandler(d: {
       return;
     }
 
-    if (o.status === 'entregue' || o.status === 'retirado' || o.status === 'cancelado') {
-      await reply(ev.de, `Pedido #${o.id} está ${o.status}.`);
+    if (acao !== 'problema' && (o.status === 'entregue' || o.status === 'retirado' || o.status === 'cancelado')) {
+      await reply(ev.de, `Pedido #${o.id} ${STATUS_LABEL[o.status]}.`);
       return;
     }
 
@@ -60,7 +70,7 @@ export function createStaffHandler(d: {
       }
     } catch (err) {
       if (!(err instanceof InvalidTransitionError)) throw err;
-      await reply(ev.de, `Pedido #${o.id} está ${err.from}.`);
+      await reply(ev.de, `Pedido #${o.id} ${STATUS_LABEL[err.from]}.`);
     }
   };
 }

@@ -153,7 +153,7 @@ describe('createStaffHandler', () => {
     const o = await create(retiradaReq);
     // Retirada vai só ao dono; "saiu" não é transição válida para retirada.
     await say(DONO, 'saiu');
-    expect(last(DONO)).toBe('Pedido #1 está recebido.');
+    expect(last(DONO)).toBe('Pedido #1 ainda não saiu.');
     expect(getOrder(db, o.id)!.status).toBe('recebido');
   });
 
@@ -180,8 +180,28 @@ describe('createStaffHandler', () => {
     const wamid = wamidOf(o.id, JOAO);
     await orders.setStatus(o.id, 'entregue');
     await say(JOAO, 'saiu', wamid);
-    expect(last(JOAO)).toBe('Pedido #1 está entregue.');
+    expect(last(JOAO)).toBe('Pedido #1 já foi entregue.');
     expect(getOrder(db, o.id)).toMatchObject({ status: 'entregue', entregadorTelefone: null });
+  });
+
+  test('problema em pedido finalizado ainda alerta o dono', async () => {
+    const { db, orders, alerts, say, create, last, wamidOf } = setup();
+    const o = await create();
+    const wamid = wamidOf(o.id, JOAO);
+    await orders.setStatus(o.id, 'entregue');
+    await say(JOAO, 'cliente reclamou, problema', wamid);
+    expect(alerts.listOpen().map((a) => a.pedidoId)).toEqual([o.id]);
+    expect(last(JOAO)).toBe('Avisei o dono sobre o #1.');
+    expect(getOrder(db, o.id)!.status).toBe('entregue');
+  });
+
+  test('pedido cancelado responde "foi cancelado"', async () => {
+    const { orders, say, create, last, wamidOf } = setup();
+    const o = await create();
+    const wamid = wamidOf(o.id, JOAO);
+    await orders.cancel(o.id, 'dono');
+    await say(JOAO, 'entregue', wamid);
+    expect(last(JOAO)).toBe('Pedido #1 foi cancelado.');
   });
 
   test('transição inválida (saiu duas vezes) responde o status atual', async () => {
@@ -189,6 +209,6 @@ describe('createStaffHandler', () => {
     await create();
     await say(JOAO, 'saiu');
     await say(JOAO, 'saiu');
-    expect(last(JOAO)).toBe('Pedido #1 está saiu.');
+    expect(last(JOAO)).toBe('Pedido #1 já saiu.');
   });
 });

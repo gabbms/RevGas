@@ -11,10 +11,13 @@ const RULES: ReadonlyArray<readonly [StaffReply, readonly string[]]> = [
   ['saiu', ['saiu', 'saindo', 'a caminho', 'indo', 'sai agora', 'rota']],
 ];
 
+// Palavras curtas que apareceriam no meio de outras ("lindo", "frota"): só valem inteiras.
+const WHOLE_WORD = new Set(['indo', 'rota', 'feito']);
+
 export function parseStaffReply(texto: string): StaffReply | null {
   const t = normalizeText(texto);
   for (const [reply, words] of RULES) {
-    if (words.some((w) => t.includes(w))) return reply;
+    if (words.some((w) => (WHOLE_WORD.has(w) ? new RegExp(String.raw`\b${w}\b`).test(t) : t.includes(w)))) return reply;
   }
   return null;
 }
