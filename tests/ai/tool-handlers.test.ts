@@ -4,7 +4,7 @@ import { createOutbox } from '../../src/whatsapp/outbox.js';
 import { createAlertService } from '../../src/alerts/service.js';
 import { DEFAULT_SETTINGS, getSettings, updateSettings, type StoreSettings } from '../../src/store/settings.js';
 import { getCustomer, upsertCustomerByPhone, updateCustomer } from '../../src/store/customers.js';
-import { getDraft } from '../../src/store/drafts.js';
+import { getDraft, markDraftsPresented } from '../../src/store/drafts.js';
 import { getOrder, lastOrderFor, updateOrder } from '../../src/store/orders.js';
 import { listOpenAlerts } from '../../src/store/alerts.js';
 import { createWhatsAppDispatcher } from '../../src/orders/dispatcher.js';
@@ -16,6 +16,8 @@ import { FakeWhatsApp } from '../fakes/fake-whatsapp.js';
 
 const SEGUNDA_10H = new Date('2026-11-02T13:00:00Z');
 const SEGUNDA_10H_05 = new Date('2026-11-02T13:00:05Z');
+/** Quando a resposta com o resumo saiu para o cliente. */
+const SEGUNDA_10H_06 = new Date('2026-11-02T13:00:06Z');
 const SEGUNDA_10H_01 = new Date('2026-11-02T13:01:00Z');
 const DOMINGO_21H30 = new Date('2026-11-02T00:30:00Z');
 
@@ -67,7 +69,9 @@ function setup(over: Partial<StoreSettings> = {}, at: Date = SEGUNDA_10H) {
   const setTime = (d: Date) => {
     t = d;
   };
-  return { db, fake, ctx, cliente, outro, orders, setTime };
+  /** O handler de turno marca os rascunhos como apresentados depois de enviar a resposta. */
+  const presented = (at: Date = SEGUNDA_10H_06, clienteId: number = cliente.id) => markDraftsPresented(db, clienteId, at);
+  return { db, fake, ctx, cliente, outro, orders, setTime, presented };
 }
 
 /** Prepara um rascunho num turno e confirma no turno seguinte. */
@@ -75,6 +79,7 @@ async function pedidoConfirmado(s: ReturnType<typeof setup>, req: Parameters<Ret
   s.setTime(SEGUNDA_10H_05);
   const p = await createToolHandlers(s.ctx).prepararPedido(req);
   if (!('rascunhoId' in p)) throw new Error(p.erros.join('; '));
+  s.presented();
   s.setTime(SEGUNDA_10H_01);
   const r = await createToolHandlers({ ...s.ctx, ultimaMensagemClienteEm: SEGUNDA_10H_01 }).confirmarPedido({
     rascunhoId: p.rascunhoId,
@@ -93,16 +98,21 @@ describe('confirmarPedido', () => {
     expect(await h.confirmarPedido({ rascunhoId: p.rascunhoId })).toMatchObject({
       erro: expect.stringContaining('espere o cliente'),
     });
+    s.presented();
+    expect(await h.confirmarPedido({ rascunhoId: p.rascunhoId })).toMatchObject({
+      erro: expect.stringContaining('espere o cliente'),
+    });
     expect(getOrder(s.db, 1)).toBeNull();
     expect(getDraft(s.db, p.rascunhoId)?.consumidoEm).toBeNull();
   });
 
-  test('rascunho criado no mesmo instante da última mensagem também é recusado', async () => {
+  test('resumo apresentado no mesmo instante da última mensagem também é recusado', async () => {
     const s = setup();
     s.setTime(SEGUNDA_10H_05);
-    const h = createToolHandlers({ ...s.ctx, ultimaMensagemClienteEm: SEGUNDA_10H_05 });
+    const h = createToolHandlers({ ...s.ctx, ultimaMensagemClienteEm: SEGUNDA_10H_06 });
     const p = await h.prepararPedido({ quantidade: 1, modo: 'troca', pagamento: 'cartao', endereco: end });
     if (!('rascunhoId' in p)) throw new Error('rascunho inválido');
+    s.presented(SEGUNDA_10H_06);
     expect(await h.confirmarPedido({ rascunhoId: p.rascunhoId })).toEqual({
       erro: 'mostre o resumo e espere o cliente confirmar',
     });
@@ -118,6 +128,7 @@ describe('confirmarPedido', () => {
       endereco: end,
     });
     if (!('rascunhoId' in p)) throw new Error('rascunho inválido');
+    s.presented();
     s.setTime(SEGUNDA_10H_01);
     const h2 = createToolHandlers({ ...s.ctx, ultimaMensagemClienteEm: SEGUNDA_10H_01 });
     const r = await h2.confirmarPedido({ rascunhoId: p.rascunhoId });
@@ -149,6 +160,7 @@ describe('confirmarPedido', () => {
     });
     if (!('rascunhoId' in p)) throw new Error('rascunho inválido');
     expect(p.total).toBe('R$ 115,00');
+    s.presented();
     updateSettings(s.db, { ...getSettings(s.db), precoRecargaCentavos: 12000 });
     s.setTime(SEGUNDA_10H_01);
     const r = await createToolHandlers({ ...s.ctx, ultimaMensagemClienteEm: SEGUNDA_10H_01 }).confirmarPedido({
@@ -156,6 +168,8 @@ describe('confirmarPedido', () => {
     });
     expect(r).toMatchObject({ erro: 'preco_mudou', novoRascunho: { total: 'R$ 120,00' } });
     expect(getOrder(s.db, 1)).toBeNull();
+    // O resumo antigo foi substituído pelo novo.
+    expect(getDraft(s.db, p.rascunhoId)?.substituidoEm).not.toBeNull();
   });
 
   test('rascunho de outro cliente é recusado', async () => {
@@ -168,11 +182,12 @@ describe('confirmarPedido', () => {
       endereco: end,
     });
     if (!('rascunhoId' in p)) throw new Error('rascunho inválido');
+    s.presented(SEGUNDA_10H_06, s.outro.id);
     s.setTime(SEGUNDA_10H_01);
     const r = await createToolHandlers({ ...s.ctx, ultimaMensagemClienteEm: SEGUNDA_10H_01 }).confirmarPedido({
       rascunhoId: p.rascunhoId,
     });
-    expect(r).toMatchObject({ erro: expect.any(String) });
+    expect(r).toEqual({ erro: expect.stringContaining('não encontrado') });
     expect(getOrder(s.db, 1)).toBeNull();
   });
 
@@ -186,6 +201,7 @@ describe('confirmarPedido', () => {
       endereco: end,
     });
     if (!('rascunhoId' in p)) throw new Error('rascunho inválido');
+    s.presented();
     const tarde = new Date(SEGUNDA_10H_05.getTime() + 2 * 60 * 60 * 1000 + 1000);
     s.setTime(tarde);
     const r = await createToolHandlers({ ...s.ctx, ultimaMensagemClienteEm: tarde }).confirmarPedido({
@@ -205,6 +221,7 @@ describe('confirmarPedido', () => {
       endereco: end,
     });
     if (!('rascunhoId' in p)) throw new Error('rascunho inválido');
+    s.presented();
     updateSettings(s.db, { ...getSettings(s.db), bairros: ['Fátima'] });
     s.setTime(SEGUNDA_10H_01);
     const r = await createToolHandlers({ ...s.ctx, ultimaMensagemClienteEm: SEGUNDA_10H_01 }).confirmarPedido({
@@ -220,6 +237,7 @@ describe('confirmarPedido', () => {
     const p = await h.prepararPedido({ quantidade: 1, modo: 'troca', pagamento: 'cartao', endereco: end });
     expect(p).toMatchObject({ agendado: true, proximaAbertura: 'seg 02/11 07:00' });
     if (!('rascunhoId' in p)) throw new Error('rascunho inválido');
+    s.presented(new Date(DOMINGO_21H30.getTime() + 1000));
     const depois = new Date(DOMINGO_21H30.getTime() + 60_000);
     s.setTime(depois);
     const r = await createToolHandlers({ ...s.ctx, ultimaMensagemClienteEm: depois }).confirmarPedido({
@@ -229,10 +247,117 @@ describe('confirmarPedido', () => {
       numero: 1,
       status: 'agendado',
       tipo: 'entrega',
-      previsaoEntregaMin: 40,
       agendado: true,
       proximaAbertura: 'seg 02/11 07:00',
     });
+  });
+
+  test('rascunho criado mas nunca apresentado é recusado', async () => {
+    const s = setup();
+    s.setTime(SEGUNDA_10H_05);
+    const p = await createToolHandlers(s.ctx).prepararPedido({
+      quantidade: 1,
+      modo: 'troca',
+      pagamento: 'cartao',
+      endereco: end,
+    });
+    if (!('rascunhoId' in p)) throw new Error('rascunho inválido');
+    s.setTime(SEGUNDA_10H_01);
+    const r = await createToolHandlers({ ...s.ctx, ultimaMensagemClienteEm: SEGUNDA_10H_01 }).confirmarPedido({
+      rascunhoId: p.rascunhoId,
+    });
+    expect(r).toEqual({ erro: 'mostre o resumo e espere o cliente confirmar' });
+    expect(getOrder(s.db, 1)).toBeNull();
+  });
+
+  test('resumo substituído não pode ser confirmado; o mais recente pode', async () => {
+    const s = setup();
+    s.setTime(SEGUNDA_10H_05);
+    const h = createToolHandlers(s.ctx);
+    const p1 = await h.prepararPedido({ quantidade: 1, modo: 'troca', pagamento: 'cartao', endereco: end });
+    const p2 = await h.prepararPedido({ quantidade: 2, modo: 'troca', pagamento: 'cartao', endereco: end });
+    if (!('rascunhoId' in p1) || !('rascunhoId' in p2)) throw new Error('rascunho inválido');
+    s.presented();
+    s.setTime(SEGUNDA_10H_01);
+    const h2 = createToolHandlers({ ...s.ctx, ultimaMensagemClienteEm: SEGUNDA_10H_01 });
+    expect(await h2.confirmarPedido({ rascunhoId: p1.rascunhoId })).toEqual({
+      erro: 'esse resumo foi substituído; use o resumo mais recente',
+    });
+    expect(getOrder(s.db, 1)).toBeNull();
+    expect(await h2.confirmarPedido({ rascunhoId: p2.rascunhoId })).toMatchObject({ numero: 1, status: 'recebido' });
+    expect(getOrder(s.db, 1)?.quantidade).toBe(2);
+  });
+
+  test('loja fechou entre o resumo e o sim: condicoes_mudaram com novo resumo agendado', async () => {
+    const s = setup();
+    s.setTime(SEGUNDA_10H_05);
+    const p = await createToolHandlers(s.ctx).prepararPedido({
+      quantidade: 1,
+      modo: 'troca',
+      pagamento: 'cartao',
+      endereco: end,
+    });
+    if (!('rascunhoId' in p)) throw new Error('rascunho inválido');
+    expect(p.agendado).toBe(false);
+    s.presented();
+    const cfg = getSettings(s.db);
+    updateSettings(s.db, { ...cfg, horarios: { ...cfg.horarios, seg: null } });
+    s.setTime(SEGUNDA_10H_01);
+    const r = await createToolHandlers({ ...s.ctx, ultimaMensagemClienteEm: SEGUNDA_10H_01 }).confirmarPedido({
+      rascunhoId: p.rascunhoId,
+    });
+    expect(r).toMatchObject({ erro: 'condicoes_mudaram', novoRascunho: { agendado: true } });
+    expect(getOrder(s.db, 1)).toBeNull();
+  });
+
+  test('chave Pix mudou entre o resumo e o sim: condicoes_mudaram', async () => {
+    const s = setup();
+    s.setTime(SEGUNDA_10H_05);
+    const p = await createToolHandlers(s.ctx).prepararPedido({
+      quantidade: 1,
+      modo: 'troca',
+      pagamento: 'pix_antecipado',
+      endereco: end,
+    });
+    if (!('rascunhoId' in p)) throw new Error('rascunho inválido');
+    s.presented();
+    updateSettings(s.db, { ...getSettings(s.db), chavePix: 'outra-chave@loja' });
+    s.setTime(SEGUNDA_10H_01);
+    const r = await createToolHandlers({ ...s.ctx, ultimaMensagemClienteEm: SEGUNDA_10H_01 }).confirmarPedido({
+      rascunhoId: p.rascunhoId,
+    });
+    expect(r).toMatchObject({
+      erro: 'condicoes_mudaram',
+      novoRascunho: { resumo: expect.arrayContaining(['Chave Pix: outra-chave@loja']) },
+    });
+    expect(getOrder(s.db, 1)).toBeNull();
+  });
+
+  test('mudança da chave Pix não afeta pedido em cartão', async () => {
+    const s = setup();
+    s.setTime(SEGUNDA_10H_05);
+    const p = await createToolHandlers(s.ctx).prepararPedido({
+      quantidade: 1,
+      modo: 'troca',
+      pagamento: 'cartao',
+      endereco: end,
+    });
+    if (!('rascunhoId' in p)) throw new Error('rascunho inválido');
+    s.presented();
+    updateSettings(s.db, { ...getSettings(s.db), chavePix: 'outra-chave@loja' });
+    s.setTime(SEGUNDA_10H_01);
+    const r = await createToolHandlers({ ...s.ctx, ultimaMensagemClienteEm: SEGUNDA_10H_01 }).confirmarPedido({
+      rascunhoId: p.rascunhoId,
+    });
+    expect(r).toMatchObject({ numero: 1 });
+  });
+
+  test('retirada pelo Gás do Povo não informa previsão de entrega', async () => {
+    const s = setup({ gasDoPovo: { aceita: true, modalidade: 'retirada', taxaEntregaCentavos: 0 } });
+    const r = await pedidoConfirmado(s, { quantidade: 1, modo: 'troca', pagamento: 'gas_do_povo' });
+    expect(r).toEqual({ numero: 1, status: 'recebido', tipo: 'retirada', agendado: false });
+    const c = await createToolHandlers(s.ctx).consultarCliente();
+    expect(c.pedidosEmAberto[0]).not.toHaveProperty('previsaoEntregaMin');
   });
 });
 
@@ -317,6 +442,13 @@ describe('consultarLoja', () => {
       gasDoPovo: { aceita: true, modalidade: 'entrega', taxaEntrega: 'R$ 5,00' },
     });
     expect(r.proximaAbertura).toBeUndefined();
+  });
+
+  test('Pix antecipado sem chave cadastrada não aparece nos pagamentos', async () => {
+    const s = setup({ chavePix: null });
+    const r = await createToolHandlers(s.ctx).consultarLoja();
+    expect(r.pagamentos).not.toContain('Pix antecipado');
+    expect(r).not.toHaveProperty('chavePix');
   });
 
   test('sem Pix antecipado não mostra a chave; fechada mostra próxima abertura', async () => {

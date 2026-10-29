@@ -4,7 +4,7 @@ import { dirname } from 'node:path';
 
 // O .sql fica ao lado deste módulo: em src/ (tsx/vitest) e em dist/ (o script
 // "build" copia src/db/migrations para dist/db/migrations).
-const MIGRATIONS = ['001_init.sql'];
+const MIGRATIONS = ['001_init.sql', '002_draft_presented.sql'];
 
 function loadMigration(name: string): string {
   return readFileSync(new URL(`./migrations/${name}`, import.meta.url), 'utf8');

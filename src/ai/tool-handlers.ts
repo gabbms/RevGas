@@ -8,7 +8,13 @@ import type { Address, CylinderMode, OrderKind, OrderStatus, PaymentMethod } fro
 import { formatAddress } from '../orders/dispatcher.js';
 import type { OrderService } from '../orders/service.js';
 import { getCustomer, updateCustomer, type Customer } from '../store/customers.js';
-import { consumeDraft, createDraft, getDraft } from '../store/drafts.js';
+import {
+  consumeDraft,
+  createDraft,
+  getDraft,
+  supersedeOpenDrafts,
+  type DraftConditions,
+} from '../store/drafts.js';
 import { getOrder, lastOrderFor, type Order } from '../store/orders.js';
 import type { StoreSettings } from '../store/settings.js';
 
@@ -106,6 +112,16 @@ const orderQuote = (o: Order): Quote => ({
   totalCentavos: o.totalCentavos,
 });
 
+/** O que o resumo mostrou e que, se mudar, exige um resumo novo. */
+function draftConditions(s: StoreSettings, req: OrderRequest, agendado: boolean): DraftConditions {
+  return { agendado, chavePix: req.pagamento === 'pix_antecipado' ? (s.chavePix ?? null) : null };
+}
+
+/** Previsão de entrega só vale para entrega já liberada à equipe (não para retirada nem agendado). */
+function deliveryEstimate(s: StoreSettings, o: Order): { previsaoEntregaMin?: number } {
+  return o.tipo === 'entrega' && o.status !== 'agendado' ? { previsaoEntregaMin: s.previsaoEntregaMin } : {};
+}
+
 export type PrepararResult =
   | {
       rascunhoId: number;
@@ -118,8 +134,8 @@ export type PrepararResult =
   | { erros: string[] };
 
 export type ConfirmarResult =
-  | { numero: number; status: OrderStatus; tipo: OrderKind; previsaoEntregaMin: number; agendado: boolean; proximaAbertura?: string }
-  | { erro: 'preco_mudou'; novoRascunho: PrepararResult }
+  | { numero: number; status: OrderStatus; tipo: OrderKind; previsaoEntregaMin?: number; agendado: boolean; proximaAbertura?: string }
+  | { erro: 'preco_mudou' | 'condicoes_mudaram'; novoRascunho: PrepararResult }
   | { erro: string }
   | { erros: string[] };
 
@@ -151,7 +167,8 @@ export function createToolHandlers(ctx: ToolContext) {
     const now = ctx.clock();
     const abertaAgora = isOpen(s, now);
     const proximaAbertura = abertaAgora ? undefined : nextOpeningLabel(s, now);
-    const aceitaPix = s.pagamentos.includes('pix_antecipado') && s.chavePix !== null;
+    // Mesmo critério da validação do pedido: Pix antecipado só com chave cadastrada.
+    const aceitaPix = s.pagamentos.includes('pix_antecipado') && !!s.chavePix;
     return {
       nomeLoja: s.nomeLoja,
       enderecoLoja: s.enderecoLoja,
@@ -166,6 +183,7 @@ export function createToolHandlers(ctx: ToolContext) {
       // Gás do Povo só conta como aceito se estiver ligado nas duas configurações (igual à validação do pedido).
       pagamentos: s.pagamentos
         .filter((p) => p !== 'gas_do_povo' || s.gasDoPovo.aceita)
+        .filter((p) => p !== 'pix_antecipado' || aceitaPix)
         .map((p) => PAYMENT_LABELS[p]),
       ...(aceitaPix ? { chavePix: s.chavePix! } : {}),
       gasDoPovo: {
@@ -199,7 +217,7 @@ export function createToolHandlers(ctx: ToolContext) {
         status: o.status,
         tipo: o.tipo,
         criadoEm: formatLocalDateTime(new Date(o.criadoEm), s.fuso),
-        previsaoEntregaMin: s.previsaoEntregaMin,
+        ...deliveryEstimate(s, o),
       })),
       lembretesDesativados: c.lembretesDesativados,
     };
@@ -221,7 +239,9 @@ export function createToolHandlers(ctx: ToolContext) {
     const v = validateOrderRequest(s, full, now);
     if (!v.ok) return { erros: v.erros };
 
-    const draft = createDraft(db, clienteId, full, v.quote.totalCentavos, now);
+    // Só o resumo mais recente pode ser confirmado.
+    supersedeOpenDrafts(db, clienteId, now);
+    const draft = createDraft(db, clienteId, full, v.quote.totalCentavos, now, draftConditions(s, full, v.agendado));
     const proximaAbertura = v.agendado ? nextOpeningLabel(s, now) : undefined;
     return {
       rascunhoId: draft.id,
@@ -237,17 +257,26 @@ export function createToolHandlers(ctx: ToolContext) {
     const now = ctx.clock();
     const d = getDraft(db, i.rascunhoId);
     if (!d || d.clienteId !== clienteId) return { erro: 'rascunho não encontrado; chame preparar_pedido de novo' };
+    if (d.substituidoEm !== null) return { erro: 'esse resumo foi substituído; use o resumo mais recente' };
     if (d.consumidoEm !== null || confirmando.has(d.id)) return { erro: 'esse resumo já foi confirmado' };
-    const criadoEm = new Date(d.criadoEm);
-    if (now.getTime() - criadoEm.getTime() > DRAFT_TTL_MS) {
+    if (now.getTime() - new Date(d.criadoEm).getTime() > DRAFT_TTL_MS) {
       return { erro: 'esse resumo expirou; chame preparar_pedido de novo e mostre o novo resumo' };
     }
-    // O cliente só pode ter dito "sim" a um resumo que existia antes da mensagem dele.
-    if (criadoEm.getTime() >= ctx.ultimaMensagemClienteEm.getTime()) return { erro: ERRO_MESMO_TURNO };
+    // O cliente só pode ter dito "sim" a um resumo que já tinha chegado a ele antes da mensagem dele.
+    if (d.apresentadoEm === null || new Date(d.apresentadoEm).getTime() >= ctx.ultimaMensagemClienteEm.getTime()) {
+      return { erro: ERRO_MESMO_TURNO };
+    }
 
-    const v = validateOrderRequest(ctx.settings(), d.request, now);
+    const s0 = ctx.settings();
+    const v = validateOrderRequest(s0, d.request, now);
     if (v.ok && v.quote.totalCentavos !== d.totalCentavos) {
       return { erro: 'preco_mudou', novoRascunho: await prepararPedido(d.request) };
+    }
+    if (v.ok && d.condicoes) {
+      const atual = draftConditions(s0, d.request, v.agendado);
+      if (atual.agendado !== d.condicoes.agendado || atual.chavePix !== d.condicoes.chavePix) {
+        return { erro: 'condicoes_mudaram', novoRascunho: await prepararPedido(d.request) };
+      }
     }
 
     confirmando.add(d.id);
@@ -265,7 +294,7 @@ export function createToolHandlers(ctx: ToolContext) {
         numero: o.id,
         status: o.status,
         tipo: o.tipo,
-        previsaoEntregaMin: s.previsaoEntregaMin,
+        ...deliveryEstimate(s, o),
         agendado,
         ...(proximaAbertura ? { proximaAbertura } : {}),
       };
