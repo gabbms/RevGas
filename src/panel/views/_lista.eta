@@ -1,26 +1,101 @@
-<% if (it.pedidos.length === 0) { %>
-  <p class="vazio">Nenhum pedido hoje ainda.</p>
-<% } %>
-<% for (const p of it.pedidos) { %>
-  <article class="pedido">
-    <div class="linha">
-      <strong>#<%= p.id %></strong>
-      <span class="tag st-<%= p.status %>"><%= p.statusRotulo %></span>
-      <% for (const s of p.selos) { %><span class="tag selo"><%= s %></span><% } %>
-      <span class="hora"><%= p.hora %></span>
+<%
+const tomStatus = { recebido: 'warn', saiu: 'info', agendado: 'neutral', entregue: 'pos', retirado: 'pos', cancelado: 'neutral' };
+%>
+<div class="lead-row">
+  <p class="sub"><%= it.achado %></p>
+  <p class="stamp">Atualizado às <%= it.atualizado %></p>
+</div>
+
+<section class="kpis" aria-label="Resumo do dia">
+  <div class="kpi kpi-lead"><p class="kpi-label">Esperando sair</p><p class="kpi-value num"><%= it.kpis.esperando %></p></div>
+  <div class="kpi"><p class="kpi-label">Na rua</p><p class="kpi-value num"><%= it.kpis.naRua %></p></div>
+  <div class="kpi"><p class="kpi-label">Entregues e retirados</p><p class="kpi-value num"><%= it.kpis.concluidos %></p></div>
+  <div class="kpi"><p class="kpi-label">Botijões vendidos hoje</p><p class="kpi-value num"><%= it.kpis.botijoes %></p></div>
+  <div class="kpi"><p class="kpi-label">Total dos pedidos de hoje</p><p class="kpi-value num"><%= it.kpis.vendido %></p></div>
+</section>
+
+<section class="block" aria-labelledby="h-abertos">
+  <header class="block-head">
+    <h2 id="h-abertos">Em aberto <span class="h-count num"><%= it.abertas.length %></span></h2>
+    <p class="meta">Tempo contado da hora do pedido</p>
+  </header>
+  <% if (it.abertas.length === 0) { %>
+    <p class="empty">Nenhum pedido em aberto. Os novos aparecem aqui sozinhos.</p>
+  <% } else { %>
+    <div class="orders-head" aria-hidden="true">
+      <span>Pedido</span><span>Cliente e endereço</span><span>Itens e pagamento</span><span>Tempo</span><span class="n">Total</span><span></span>
     </div>
-    <div class="cliente"><a href="/painel/conversas/<%= p.clienteId %>"><%= p.cliente %></a></div>
-    <div class="detalhe"><%= p.resumo %> · <%= p.tipo %> · <%= p.pagamento %><% if (p.troco) { %> (troco p/ <%= p.troco %>)<% } %> · <strong><%= p.total %></strong></div>
-    <% if (p.endereco) { %><div class="detalhe"><%= p.endereco %></div><% } %>
-    <% if (p.acoes.length > 0) { %>
-      <div class="acoes">
-        <% for (const a of p.acoes) { %>
-          <form method="post" action="/painel/pedidos/<%= p.id %>/status"<% if (a.perigo) { %> onsubmit="return confirm('Cancelar este pedido?')"<% } %>>
-            <input type="hidden" name="status" value="<%= a.status %>">
-            <button type="submit" class="btn <%= a.perigo ? 'perigo' : '' %>"><%= a.rotulo %></button>
-          </form>
-        <% } %>
-      </div>
+    <ul class="orders">
+    <% for (const p of it.abertas) { %>
+      <li class="order<%= p.relogio && p.relogio.atrasado ? ' late' : '' %>">
+        <div class="o-id"><strong>#<%= p.id %></strong><span class="meta num"><%= p.hora %></span></div>
+        <div class="o-who">
+          <a class="name" href="/painel/conversas/<%= p.clienteId %>"><%= p.cliente %></a>
+          <span class="sub"><%= p.tipo === 'retirada' ? 'Retirada na loja' : (p.endereco ?? 'Sem endereço') %></span>
+        </div>
+        <div class="o-what">
+          <span><%= p.resumo %></span>
+          <span class="sub"><%= p.pagamento %><% if (p.troco) { %> · troco p/ <%= p.troco %><% } %></span>
+          <% if (p.selos.length > 0) { %><span class="tags"><% for (const s of p.selos) { %><span class="tag tag-<%= s.tom %>"><%= s.texto %></span><% } %></span><% } %>
+        </div>
+        <div class="o-clock">
+          <span class="pill pill-<%= tomStatus[p.status] %>"><%= p.statusRotulo %></span>
+          <% if (p.relogio) { %>
+            <span class="clock<%= p.relogio.atrasado ? ' over' : '' %>">
+              <span class="track" aria-hidden="true"><span class="fill" style="width: <%= Math.round(p.relogio.fracao * 100) %>%"></span></span>
+              <span class="clock-text num"><%= p.relogio.texto %></span>
+            </span>
+          <% } else if (p.agendadoPara) { %>
+            <span class="clock-text">Sai na abertura, <%= p.agendadoPara %></span>
+          <% } %>
+        </div>
+        <div class="o-total num"><%= p.total %></div>
+        <div class="o-actions">
+          <% for (const a of p.acoes.filter((x) => !x.perigo)) { %>
+            <form method="post" action="/painel/pedidos/<%= p.id %>/status">
+              <input type="hidden" name="status" value="<%= a.status %>">
+              <button type="submit" class="btn"><%= a.rotulo %></button>
+            </form>
+          <% } %>
+          <% const cancelar = p.acoes.find((x) => x.perigo); if (cancelar) { %>
+            <details class="menu">
+              <summary class="btn ghost icon" aria-label="Mais ações do pedido #<%= p.id %>"><%~ it.icons.mais %></summary>
+              <div class="menu-pop">
+                <form method="post" action="/painel/pedidos/<%= p.id %>/status" onsubmit="return confirm('Cancelar o pedido #<%= p.id %>? O cliente e o entregador são avisados.')">
+                  <input type="hidden" name="status" value="cancelado">
+                  <button type="submit" class="menu-item danger">Cancelar pedido</button>
+                </form>
+              </div>
+            </details>
+          <% } %>
+        </div>
+      </li>
     <% } %>
-  </article>
-<% } %>
+    </ul>
+  <% } %>
+</section>
+
+<section class="block" aria-labelledby="h-concluidos">
+  <header class="block-head">
+    <h2 id="h-concluidos">Concluídos hoje <span class="h-count num"><%= it.concluidas.length %></span></h2>
+  </header>
+  <% if (it.concluidas.length === 0) { %>
+    <p class="empty">Nenhum pedido concluído hoje ainda.</p>
+  <% } else { %>
+    <table class="table done">
+      <thead><tr><th>Pedido</th><th>Cliente</th><th>Itens</th><th>Pagamento</th><th>Situação</th><th class="n">Total</th></tr></thead>
+      <tbody>
+      <% for (const p of it.concluidas) { %>
+        <tr<% if (p.status === 'cancelado') { %> class="cancelled"<% } %>>
+          <td><strong>#<%= p.id %></strong> <span class="meta num"><%= p.hora %></span></td>
+          <td><a class="name" href="/painel/conversas/<%= p.clienteId %>"><%= p.cliente %></a></td>
+          <td><%= p.resumo %></td>
+          <td class="muted"><%= p.pagamento %></td>
+          <td><span class="pill pill-<%= tomStatus[p.status] %>"><%= p.statusRotulo %></span><% if (p.fim) { %> <span class="meta num"><%= p.fim %></span><% } %></td>
+          <td class="n num"><%= p.total %></td>
+        </tr>
+      <% } %>
+      </tbody>
+    </table>
+  <% } %>
+</section>

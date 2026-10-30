@@ -9,9 +9,13 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import type { AlertService } from '../alerts/service.js';
 import type { Env } from '../config/env.js';
 import type { Db } from '../db/connection.js';
+import { formatHorarios } from '../domain/hours.js';
 import type { OrderService } from '../orders/service.js';
+import { listOpenOrders } from '../store/orders.js';
 import type { StoreSettings } from '../store/settings.js';
 import type { createOutbox } from '../whatsapp/outbox.js';
+import { storeStatus } from './format.js';
+import { ICONS, MARCA } from './icons.js';
 import { registerConfigRoutes } from './routes-config.js';
 import { registerConversationRoutes } from './routes-conversations.js';
 import { registerCustomerRoutes } from './routes-customers.js';
@@ -34,13 +38,13 @@ const COOKIE = 'sessao';
 const SESSION_VALUE = 'ok';
 const THIRTY_DAYS = 30 * 24 * 60 * 60;
 
-/** Abas da navegação. A Task 15 só precisa registrar as rotas dessas telas. */
+/** Telas do painel, na ordem da navegação. `curto` é o rótulo da barra de baixo no celular. */
 export const NAV = [
-  { id: 'pedidos', label: 'Pedidos', href: '/painel/pedidos' },
-  { id: 'clientes', label: 'Clientes', href: '/painel/clientes' },
-  { id: 'conversas', label: 'Conversas', href: '/painel/conversas' },
-  { id: 'alertas', label: 'Alertas', href: '/painel/alertas' },
-  { id: 'config', label: 'Configurações', href: '/painel/config' },
+  { id: 'pedidos', label: 'Pedidos', curto: 'Pedidos', href: '/painel/pedidos' },
+  { id: 'conversas', label: 'Conversas', curto: 'Conversas', href: '/painel/conversas' },
+  { id: 'alertas', label: 'Alertas', curto: 'Alertas', href: '/painel/alertas' },
+  { id: 'clientes', label: 'Clientes', curto: 'Clientes', href: '/painel/clientes' },
+  { id: 'config', label: 'Configurações', curto: 'Ajustes', href: '/painel/config' },
 ] as const;
 export type NavId = (typeof NAV)[number]['id'];
 
@@ -89,15 +93,33 @@ export function renderPage(
   active: NavId,
   data: Record<string, unknown> = {},
 ) {
-  return reply
-    .type('text/html; charset=utf-8')
-    .view(view, { ...data, nav: NAV, active, alertasAbertos: deps.alerts.listOpen().length }, { layout: 'layout.eta' });
+  const s = deps.settings();
+  const agora = deps.clock();
+  // Contagens só em filas que pedem ação: pedidos esperando sair e alertas abertos.
+  const contagens: Partial<Record<NavId, number>> = {
+    pedidos: listOpenOrders(deps.db).filter((o) => o.status === 'recebido').length,
+    alertas: deps.alerts.listOpen().length,
+  };
+  return reply.type('text/html; charset=utf-8').view(
+    view,
+    {
+      ...data,
+      nav: NAV,
+      active,
+      icons: ICONS,
+      marca: MARCA,
+      contagens,
+      loja: { nome: s.nomeLoja, status: storeStatus(s, agora), horarios: formatHorarios(s) },
+    },
+    { layout: 'layout.eta' },
+  );
 }
 
 export async function registerPanel(app: FastifyInstance, deps: PanelDeps): Promise<void> {
   const { env } = deps;
   const secure = env.PUBLIC_URL.startsWith('https');
   const limiter = createLoginLimiter(deps.clock);
+  const loginData = (erro: string | null) => ({ erro, marca: MARCA, nomeLoja: deps.settings().nomeLoja });
 
   await app.register(fastifyCookie, { secret: env.SESSION_SECRET });
   await app.register(fastifyFormbody);
@@ -107,7 +129,7 @@ export async function registerPanel(app: FastifyInstance, deps: PanelDeps): Prom
 
   app.get('/login', async (req, reply) => {
     if (hasSession(req)) return reply.redirect('/painel/pedidos');
-    return reply.type('text/html; charset=utf-8').view('login.eta', { erro: null });
+    return reply.type('text/html; charset=utf-8').view('login.eta', loginData(null));
   });
 
   app.post('/login', async (req, reply) => {
@@ -116,12 +138,12 @@ export async function registerPanel(app: FastifyInstance, deps: PanelDeps): Prom
       return reply
         .code(429)
         .type('text/html; charset=utf-8')
-        .view('login.eta', { erro: 'Muitas tentativas. Tente de novo em alguns minutos.' });
+        .view('login.eta', loginData('Muitas tentativas. Tente de novo em alguns minutos.'));
     }
     const senha = (req.body as { senha?: unknown } | undefined)?.senha;
     if (typeof senha !== 'string' || !samePassword(senha, env.PANEL_PASSWORD)) {
       limiter.falhou(ip);
-      return reply.code(401).type('text/html; charset=utf-8').view('login.eta', { erro: 'Senha incorreta. Tente de novo.' });
+      return reply.code(401).type('text/html; charset=utf-8').view('login.eta', loginData('Senha incorreta. Tente de novo.'));
     }
     limiter.zerar(ip);
     reply.setCookie(COOKIE, SESSION_VALUE, {

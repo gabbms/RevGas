@@ -3,17 +3,23 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Entrar · Painel</title>
+  <title>Entrar · <%= it.nomeLoja %></title>
+  <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/static/style.css">
 </head>
-<body class="login">
-  <main>
-    <h1>Painel da revenda</h1>
-    <% if (it.erro) { %><p class="erro" role="alert"><%= it.erro %></p><% } %>
-    <form method="post" action="/login" class="card">
-      <label for="senha">Senha</label>
-      <input id="senha" name="senha" type="password" autocomplete="current-password" autofocus required>
-      <button type="submit" class="btn">Entrar</button>
+<body class="login-page">
+  <main class="login">
+    <div class="brand"><%~ it.marca %><span class="brand-text"><strong><%= it.nomeLoja %></strong><span>Painel do dono</span></span></div>
+    <h1>Entrar no painel</h1>
+    <p class="sub">Pedidos do dia, conversas do WhatsApp e os ajustes da loja.</p>
+    <% if (it.erro) { %><p class="notice notice-neg" role="alert"><%= it.erro %></p><% } %>
+    <form method="post" action="/login" class="stack">
+      <div class="field">
+        <label for="senha">Senha</label>
+        <input class="input" id="senha" name="senha" type="password" autocomplete="current-password" autofocus required>
+      </div>
+      <button type="submit" class="btn primary wide">Entrar</button>
     </form>
   </main>
 </body>

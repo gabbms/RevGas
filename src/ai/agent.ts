@@ -137,7 +137,7 @@ export function createCustomerTurnHandler(d: {
   async function deliver(clienteId: number, telefone: string, texto: string, isAgentReply: boolean): Promise<boolean> {
     const r = await d.outbox.send({ telefone, texto });
     if (!r.ok) {
-      console.error('agente: falha ao enviar resposta', clienteId, r.motivo);
+      console.error('agente: falha ao enviar resposta', clienteId, r.motivo, r.detalhe ?? '');
       return false;
     }
     const now = d.clock();

@@ -1,2 +1,2 @@
-<h1>Não encontrado</h1>
-<p class="vazio">Essa página não existe ou o cliente foi excluído.</p>
+<h1 class="page-title">Não encontrado</h1>
+<p class="empty">Essa página não existe, ou o cliente teve os dados excluídos. <a class="link" href="/painel/pedidos">Voltar aos pedidos</a></p>

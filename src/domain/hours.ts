@@ -58,6 +58,12 @@ export function isOpen(s: StoreSettings, now: Date): boolean {
   return cur >= toMinutes(h.abre) && cur < toMinutes(h.fecha);
 }
 
+/** Horário de hoje no fuso da loja; null se fecha hoje. */
+export function todayHours(s: StoreSettings, now: Date): { abre: string; fecha: string } | null {
+  const p = localParts(now, s.fuso);
+  return s.horarios[weekdayOf(p.year, p.month, p.day)];
+}
+
 /** Instante UTC em que o relógio local de `fuso` marca a data/hora dadas. */
 function zonedToUtc(year: number, month: number, day: number, minutes: number, fuso: string): Date {
   const wall = Date.UTC(year, month - 1, day, 0, minutes);

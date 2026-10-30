@@ -1,21 +1,66 @@
-<h1><%= it.cliente.nome %></h1>
-<p><a href="/painel/clientes/<%= it.cliente.id %>">Ver cliente</a></p>
-<div class="card linha">
-  <% if (it.pausado) { %>
-    <span class="tag selo">Bot pausado até <%= it.pausadoAte %></span>
-    <form method="post" action="/painel/conversas/<%= it.cliente.id %>/devolver"><button type="submit" class="btn">Devolver ao bot</button></form>
+<div class="inbox<%= it.selecionada && !it.automatica ? ' has-selection' : '' %>">
+  <section class="inbox-list" aria-labelledby="h-conversas">
+    <div class="inbox-head">
+      <% if (it.selecionada && !it.automatica) { %><h2 id="h-conversas" class="page-title">Conversas</h2><% } else { %><h1 id="h-conversas" class="page-title">Conversas</h1><% } %>
+      <p class="sub"><%= it.conversas.length %> <%= it.conversas.length === 1 ? 'cliente' : 'clientes' %> nos últimos 30 dias</p>
+    </div>
+    <% if (it.conversas.length === 0) { %>
+      <p class="empty">Nenhuma conversa ainda. Quando um cliente mandar mensagem no WhatsApp, ela aparece aqui.</p>
+    <% } else { %>
+      <ul class="threads">
+      <% for (const c of it.conversas) { %>
+        <li>
+          <a class="thread-item" href="/painel/conversas/<%= c.id %>"<% if (c.id === it.selecionada) { %> aria-current="page"<% } %>>
+            <span class="t-top"><strong class="t-name"><%= c.nome %></strong><span class="meta"><%= c.ultima %></span></span>
+            <span class="t-prev"><%= c.previa %></span>
+            <% if (c.pausado) { %><span class="t-tags"><span class="tag <%= c.esperandoVoce ? 'tag-warn' : 'tag-neutral' %>"><%= c.esperandoVoce ? 'Bot pausado · esperando você' : 'Bot pausado' %></span></span><% } %>
+          </a>
+        </li>
+      <% } %>
+      </ul>
+    <% } %>
+  </section>
+
+  <section class="inbox-thread" aria-label="Conversa">
+  <% if (!it.selecionada) { %>
+    <div class="thread-none">
+      <p class="label">Escolha uma conversa</p>
+      <p class="sub">Você vê tudo o que o bot conversou e pode assumir quando precisar. Ao responder por aqui, o bot pausa por 2 horas naquela conversa.</p>
+    </div>
   <% } else { %>
-    <span>O bot está atendendo.</span>
-    <form method="post" action="/painel/conversas/<%= it.cliente.id %>/pausar"><button type="submit" class="btn sec">Pausar bot</button></form>
+    <header class="thread-head">
+      <a class="btn ghost icon back" href="/painel/conversas" aria-label="Voltar para a lista"><%~ it.icons.voltar %></a>
+      <div class="thread-who">
+        <% if (it.automatica) { %><h2 class="thread-name"><%= it.cliente.nome %></h2><% } else { %><h1 class="thread-name"><%= it.cliente.nome %></h1><% } %>
+        <p class="meta"><% if (it.cliente.nome !== it.cliente.telefone) { %><span class="num"><%= it.cliente.telefone %></span> · <% } %><a class="link" href="/painel/clientes/<%= it.cliente.id %>">Ver cliente</a></p>
+      </div>
+      <div class="thread-bot">
+        <% if (it.pausado) { %>
+          <span class="bot-state"><span class="dot dot-warn" aria-hidden="true"></span>Você está atendendo até <%= it.pausadoAte %></span>
+          <form method="post" action="/painel/conversas/<%= it.cliente.id %>/devolver"><button type="submit" class="btn">Devolver ao bot</button></form>
+        <% } else { %>
+          <span class="bot-state"><span class="dot dot-on" aria-hidden="true"></span>O bot está atendendo</span>
+          <form method="post" action="/painel/conversas/<%= it.cliente.id %>/pausar"><button type="submit" class="btn">Pausar bot</button></form>
+        <% } %>
+      </div>
+    </header>
+    <% if (it.pedidos.length > 0) { %>
+      <p class="thread-orders">
+        <% for (const o of it.pedidos) { %><a href="/painel/pedidos"><strong>#<%= o.id %></strong> <%= o.resumo %> · <%= o.status %> · <span class="num"><%= o.total %></span></a><% } %>
+      </p>
+    <% } %>
+    <div id="mensagens" class="messages" hx-get="/painel/conversas/<%= it.cliente.id %>/mensagens" hx-trigger="every 5s" hx-swap="innerHTML">
+      <%~ include('conversa-mensagens', it) %>
+    </div>
+    <form method="post" action="/painel/conversas/<%= it.cliente.id %>/responder" class="composer">
+      <% if (it.erro) { %><p class="notice notice-neg" role="alert"><%= it.erro %></p><% } %>
+      <label for="texto" class="visually-hidden">Responder pelo painel</label>
+      <textarea class="input" id="texto" name="texto" rows="2" required placeholder="Escreva para <%= it.cliente.nome %>" aria-describedby="texto-hint"><%= it.texto %></textarea>
+      <div class="composer-foot">
+        <p class="hint" id="texto-hint">Ao enviar, o bot fica pausado por 2 horas nesta conversa.</p>
+        <button type="submit" class="btn primary">Enviar</button>
+      </div>
+    </form>
   <% } %>
+  </section>
 </div>
-<div id="mensagens" class="mensagens" hx-get="/painel/conversas/<%= it.cliente.id %>/mensagens" hx-trigger="every 5s" hx-swap="innerHTML">
-  <%~ include('conversa-mensagens', it) %>
-</div>
-<% if (it.erro) { %><p class="erro" role="alert"><%= it.erro %></p><% } %>
-<form method="post" action="/painel/conversas/<%= it.cliente.id %>/responder" class="resposta">
-  <label for="texto">Responder pelo painel (o bot fica pausado por 2 horas)</label>
-  <textarea id="texto" name="texto" rows="3" required><%= it.texto %></textarea>
-  <button type="submit" class="btn">Enviar</button>
-</form>
-<script>var m=document.getElementById('mensagens');if(m)m.scrollTop=m.scrollHeight;</script>

@@ -49,7 +49,18 @@ describe('painel: conversas', () => {
     expect(body).not.toContain('excluido-');
   });
 
-  test('histórico mostra autores, marca áudio com 🎤 e escapa HTML; só últimos 30 dias', async () => {
+  test('lista ordena pelo horário da mensagem, mesmo gravada fora de ordem', async () => {
+    const { app, db, cliente } = await setupPanel('Maria');
+    const jose = updateCustomer(db, upsertCustomerByPhone(db, '5586977776666', SEGUNDA_10H).id, { nome: 'José' });
+    msg(db, jose.id, 'cliente', 'recente', ms(-60000));
+    msg(db, cliente.id, 'cliente', 'antiga', ms(-5 * 60000)); // gravada depois, mas é mais velha
+    const cookie = await login(app);
+    const body = (await app.inject({ method: 'GET', url: '/painel/conversas', headers: { cookie } })).body;
+    const lista = body.slice(body.indexOf('class="threads"'));
+    expect(lista.indexOf('José')).toBeLessThan(lista.indexOf('Maria'));
+  });
+
+  test('histórico mostra autores, marca áudio transcrito e escapa HTML; só últimos 30 dias', async () => {
     const { app, db, cliente } = await setupPanel();
     msg(db, cliente.id, 'cliente', 'mensagem velha', ms(-31 * 86400000));
     msg(db, cliente.id, 'cliente', 'quero gás <b>agora</b>', ms(-3000), 'audio');
@@ -60,7 +71,7 @@ describe('painel: conversas', () => {
     const frag = (await app.inject({ method: 'GET', url: `/painel/conversas/${cliente.id}/mensagens`, headers: { cookie } })).body;
     expect(frag).not.toContain('<html');
     expect(frag).not.toContain('mensagem velha');
-    expect(frag).toContain('🎤');
+    expect(frag).toContain('Áudio transcrito');
     expect(frag).toContain('quero gás &lt;b&gt;agora&lt;/b&gt;');
     expect(frag).toContain('msg-cliente');
     expect(frag).toContain('msg-bot');

@@ -1,12 +1,36 @@
-<h1><%= it.titulo %></h1>
-<form method="get" action="/painel/clientes" class="busca">
-  <input type="search" name="q" value="<%= it.q %>" placeholder="Buscar por nome ou telefone" aria-label="Buscar cliente">
-  <button type="submit" class="btn">Buscar</button>
-</form>
-<% if (it.clientes.length === 0) { %><p class="vazio">Nenhum cliente encontrado.</p><% } %>
-<% for (const c of it.clientes) { %>
-  <a class="card item" href="/painel/clientes/<%= c.id %>">
-    <strong><%= c.nome %></strong>
-    <span class="detalhe"><%= c.telefone %></span>
-  </a>
-<% } %>
+<div class="title-row">
+  <div>
+    <h1><%= it.titulo %></h1>
+    <p class="sub"><%= it.total %> <%= it.total === 1 ? 'cliente' : 'clientes' %> já falaram com o bot · quem comprou por último aparece primeiro</p>
+  </div>
+</div>
+
+<section class="block" aria-labelledby="h-lista">
+  <header class="block-head toolbar">
+    <h2 id="h-lista"><% if (it.q) { %>Resultado para “<%= it.q %>”<% } else { %>Todos os clientes<% } %> <span class="h-count num"><%= it.clientes.length %></span></h2>
+    <form method="get" action="/painel/clientes" class="search" role="search">
+      <label for="q" class="visually-hidden">Buscar cliente</label>
+      <input class="input" type="search" id="q" name="q" value="<%= it.q %>" placeholder="Nome ou telefone">
+      <button type="submit" class="btn">Buscar</button>
+      <% if (it.q) { %><a class="btn ghost" href="/painel/clientes">Limpar</a><% } %>
+    </form>
+  </header>
+  <% if (it.clientes.length === 0) { %>
+    <p class="empty"><% if (it.q) { %>Nenhum cliente com esse nome ou telefone.<% } else { %>Nenhum cliente ainda. Quem mandar mensagem para o bot aparece aqui.<% } %></p>
+  <% } else { %>
+    <table class="table customers">
+      <thead><tr><th>Cliente</th><th>Bairro</th><th class="n">Pedidos</th><th class="n">Último pedido</th><th class="n">Próxima recompra</th></tr></thead>
+      <tbody>
+      <% for (const c of it.clientes) { %>
+        <tr>
+          <td><a class="name" href="/painel/clientes/<%= c.id %>"><%= c.nome %></a><span class="td-line meta num"><%= c.telefone %></span></td>
+          <td class="muted"><%= c.bairro ?? '—' %></td>
+          <td class="n num"><%= c.pedidos %></td>
+          <td class="n num"><%= c.ultimo ?? '—' %></td>
+          <td class="n num"><%= c.proxima ?? '—' %></td>
+        </tr>
+      <% } %>
+      </tbody>
+    </table>
+  <% } %>
+</section>

@@ -158,6 +158,15 @@ export function parseConfigForm(body: Record<string, unknown>): ParsedForm {
     add(erros, 'telefoneDono', 'O telefone precisa ter DDD e pelo menos 10 números.');
   }
 
+  // Pedido sem destino some: o bot confirma ao cliente e ninguém fica sabendo.
+  const destino = text(v, 'destinoPedidos');
+  if (destino === 'dono' && telefoneDono === '') {
+    add(erros, 'telefoneDono', 'Informe o seu WhatsApp: os pedidos novos vão para ele.');
+  }
+  if (destino === 'entregadores' && entregadores.length === 0 && !erros.entregadores) {
+    add(erros, 'entregadores', 'Cadastre pelo menos um entregador, ou mande os pedidos para o seu WhatsApp.');
+  }
+
   const gdpAceita = v.gdpAceita === 'on';
   const marcados = (v.pagamentos as string[]).filter((p) => PAGAMENTOS.some((x) => x.id === p)) as PaymentMethod[];
   // O bot só aceita Gás do Povo se a seção própria E a forma de pagamento estiverem ligadas: uma só caixa liga as duas.

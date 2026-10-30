@@ -61,17 +61,17 @@ describe('painel: clientes', () => {
     expect(body).toContain('Rua das Flores, 120');
     expect(body).toContain(`#${a.order.id}`);
     expect(body).toContain(`#${b.order.id}`);
-    expect(body).toContain('Lembretes: ligados');
+    expect(body).toMatch(/<dt>Lembretes<\/dt><dd>Ligados<\/dd>/);
 
     updateCustomer(db, cliente.id, { lembretesDesativados: true });
-    expect((await get(app, `/painel/clientes/${cliente.id}`, cookie)).body).toContain('Lembretes: desligados');
+    expect((await get(app, `/painel/clientes/${cliente.id}`, cookie)).body).toMatch(/<dt>Lembretes<\/dt><dd>Desligados<\/dd>/);
   });
 
   test('cliente sem histórico mostra traço na recompra; inexistente dá 404', async () => {
     const { app, cliente } = await setupPanel();
     const cookie = await login(app);
     const body = (await get(app, `/painel/clientes/${cliente.id}`, cookie)).body;
-    expect(body).toMatch(/Próxima recompra:\s*<strong>—<\/strong>/);
+    expect(body).toMatch(/<dt>Próxima recompra<\/dt><dd class="num">—<\/dd>/);
     expect((await get(app, '/painel/clientes/9999', cookie)).statusCode).toBe(404);
     expect((await get(app, '/painel/clientes/abc', cookie)).statusCode).toBe(404);
   });

@@ -1,22 +1,59 @@
-<h1><%= it.cliente.nome %></h1>
-<div class="card">
-  <div class="detalhe">Telefone: <strong><%= it.cliente.telefone %></strong></div>
-  <div class="detalhe">Endereço: <strong><%= it.endereco ?? 'não informado' %></strong></div>
-  <div class="detalhe">Próxima recompra: <strong><%= it.proximaRecompra %></strong></div>
-  <div class="detalhe">Lembretes: <%= it.lembretes %></div>
-  <div class="acoes">
-    <a class="btn sec" href="/painel/conversas/<%= it.cliente.id %>">Ver conversa</a>
+<%
+const tomStatus = { recebido: 'warn', saiu: 'info', agendado: 'neutral', entregue: 'pos', retirado: 'pos', cancelado: 'neutral' };
+%>
+<p class="crumb"><a href="/painel/clientes">Clientes</a> / <span><%= it.cliente.nome %></span></p>
+<div class="title-row">
+  <div>
+    <h1><%= it.cliente.nome %></h1>
+    <p class="sub num"><%= it.cliente.telefone %><% if (it.endereco) { %> · <%= it.endereco %><% } %></p>
   </div>
+  <a class="btn" href="/painel/conversas/<%= it.cliente.id %>">Abrir conversa</a>
 </div>
-<h2>Pedidos</h2>
-<% if (it.pedidos.length === 0) { %><p class="vazio">Nenhum pedido ainda.</p><% } %>
-<% for (const p of it.pedidos) { %>
-  <div class="card">
-    <strong>#<%= p.id %></strong> · <%= p.data %> · <%= p.status %>
-    <div class="detalhe"><%= p.resumo %> · <%= p.pagamento %> · <strong><%= p.total %></strong></div>
+
+<div class="detail-grid">
+  <section class="block" aria-labelledby="h-pedidos">
+    <header class="block-head">
+      <h2 id="h-pedidos">Pedidos <span class="h-count num"><%= it.pedidos.length %></span></h2>
+      <p class="meta num"><%= it.resumo.botijoes %> <%= it.resumo.botijoes === 1 ? 'botijão' : 'botijões' %> · <%= it.resumo.gasto %> sem os cancelados</p>
+    </header>
+    <% if (it.pedidos.length === 0) { %>
+      <p class="empty">Nenhum pedido ainda.</p>
+    <% } else { %>
+      <table class="table">
+        <thead><tr><th>Pedido</th><th>Itens</th><th>Pagamento</th><th>Situação</th><th class="n">Total</th></tr></thead>
+        <tbody>
+        <% for (const p of it.pedidos) { %>
+          <tr<% if (p.status === 'cancelado') { %> class="cancelled"<% } %>>
+            <td><strong>#<%= p.id %></strong> <span class="meta num"><%= p.data %></span></td>
+            <td><%= p.resumo %></td>
+            <td class="muted"><%= p.pagamento %></td>
+            <td><span class="pill pill-<%= tomStatus[p.status] %>"><%= p.statusRotulo %></span></td>
+            <td class="n num"><%= p.total %></td>
+          </tr>
+        <% } %>
+        </tbody>
+      </table>
+    <% } %>
+  </section>
+
+  <aside class="block" aria-labelledby="h-dados">
+    <header class="block-head"><h2 id="h-dados">Dados</h2></header>
+    <dl class="kv">
+      <div><dt>Telefone</dt><dd class="num"><%= it.cliente.telefone %></dd></div>
+      <div><dt>Endereço</dt><dd><%= it.endereco ?? 'Não informado' %></dd></div>
+      <div><dt>Próxima recompra</dt><dd class="num"><%= it.proximaRecompra %></dd></div>
+      <div><dt>Lembretes</dt><dd><%= it.lembretes === 'ligados' ? 'Ligados' : 'Desligados' %></dd></div>
+    </dl>
+    <p class="hint kv-hint">A próxima recompra é estimada pelo intervalo entre os pedidos entregues. O bot lembra o cliente nessa data se os lembretes estiverem ligados.</p>
+  </aside>
+</div>
+
+<section class="block danger-zone" aria-labelledby="h-excluir">
+  <header class="block-head"><h2 id="h-excluir">Excluir dados do cliente</h2></header>
+  <div class="danger-row">
+    <p class="sub">Apaga as mensagens, o endereço e os comprovantes guardados, e desliga os lembretes. Os pedidos continuam no histórico da loja, sem o endereço. Não dá para desfazer.</p>
+    <form method="post" action="/painel/clientes/<%= it.cliente.id %>/excluir" onsubmit="return confirm('Excluir os dados deste cliente? Isso não pode ser desfeito.')">
+      <button type="submit" class="btn danger">Excluir dados</button>
+    </form>
   </div>
-<% } %>
-<h2>Excluir dados</h2>
-<form method="post" action="/painel/clientes/<%= it.cliente.id %>/excluir" onsubmit="return confirm('Apagar as mensagens e os dados pessoais deste cliente? Isso não pode ser desfeito.')">
-  <button type="submit" class="btn perigo">Excluir dados do cliente</button>
-</form>
+</section>

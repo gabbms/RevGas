@@ -3,22 +3,55 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title><%= it.titulo %> · Painel</title>
+  <title><%= it.titulo %> · <%= it.loja.nome %></title>
+  <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@500&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/static/style.css">
-  <script src="https://unpkg.com/htmx.org@2.0.4" defer></script>
+  <script src="/static/htmx.min.js" defer></script>
+  <script src="/static/painel.js" defer></script>
 </head>
 <body>
-  <header class="topo">
-    <strong>Painel</strong>
-    <form method="post" action="/logout"><button class="link" type="submit">Sair</button></form>
-  </header>
-  <nav class="abas">
-    <% for (const n of it.nav) { %>
-      <a href="<%= n.href %>" class="<%= n.id === it.active ? 'on' : '' %>"><%= n.label %><% if (n.id === 'alertas') { %> (<%= it.alertasAbertos %>)<% } %></a>
+<div class="app">
+  <aside class="sidebar">
+    <a class="brand" href="/painel/pedidos">
+      <%~ it.marca %>
+      <span class="brand-text"><strong><%= it.loja.nome %></strong><span>Painel do dono</span></span>
+    </a>
+    <nav class="nav" aria-label="Seções do painel">
+      <% for (const n of it.nav) { const qtd = it.contagens[n.id] ?? 0; %>
+        <a class="nav-item" href="<%= n.href %>"<% if (n.id === it.active) { %> aria-current="page"<% } %>>
+          <%~ it.icons[n.id] %><span><%= n.label %></span><% if (qtd > 0) { %><span class="count" aria-label="<%= qtd %> <%= n.id === 'alertas' ? 'abertos' : 'esperando' %>"><%= qtd %></span><% } %>
+        </a>
+      <% } %>
+    </nav>
+    <div class="sidebar-foot">
+      <p class="meta">Horário</p>
+      <p class="horarios"><%= it.loja.horarios || 'Nenhum dia aberto' %></p>
+    </div>
+  </aside>
+
+  <header class="topbar">
+    <a class="brand brand-phone" href="/painel/pedidos"><%~ it.marca %><strong><%= it.loja.nome %></strong></a>
+    <% if (it.loja.status.semHorario) { %>
+      <a class="status status-off" href="/painel/config#horario"><span class="dot" aria-hidden="true"></span><%= it.loja.status.texto %></a>
+    <% } else { %>
+      <span class="status <%= it.loja.status.aberta ? 'status-on' : 'status-off' %>"><span class="dot" aria-hidden="true"></span><%= it.loja.status.texto %></span>
     <% } %>
-  </nav>
-  <main>
+    <form method="post" action="/logout" class="logout"><button class="btn ghost" type="submit"><%~ it.icons.sair %><span>Sair</span></button></form>
+  </header>
+
+  <main class="sheet" id="conteudo">
     <%~ it.body %>
   </main>
+</div>
+
+<nav class="tabbar" aria-label="Seções do painel">
+  <% for (const n of it.nav) { const qtd = it.contagens[n.id] ?? 0; %>
+    <a href="<%= n.href %>"<% if (n.id === it.active) { %> aria-current="page"<% } %>>
+      <span class="tab-icon"><%~ it.icons[n.id] %><% if (qtd > 0) { %><span class="count" aria-label="<%= qtd %> <%= n.id === 'alertas' ? 'abertos' : 'esperando' %>"><%= qtd %></span><% } %></span>
+      <span><%= n.curto %></span>
+    </a>
+  <% } %>
+</nav>
 </body>
 </html>

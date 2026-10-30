@@ -1,14 +1,58 @@
-<h1><%= it.titulo %></h1>
-<% if (it.alertas.length === 0) { %>
-  <p class="vazio">Nenhum alerta aberto. Tudo certo por aqui.</p>
-<% } %>
-<% for (const a of it.alertas) { %>
-  <article class="alerta">
-    <div class="linha"><strong><%= a.motivo %></strong><span class="hora"><%= a.quando %></span></div>
-    <% if (a.resumo) { %><p><%= a.resumo %></p><% } %>
-    <div class="acoes">
-      <% if (a.clienteId !== null) { %><a class="btn sec" href="/painel/conversas/<%= a.clienteId %>">Ver conversa</a><% } %>
-      <form method="post" action="/painel/alertas/<%= a.id %>/resolver"><button type="submit" class="btn">Resolvido</button></form>
-    </div>
-  </article>
-<% } %>
+<div class="title-row">
+  <div>
+    <h1><%= it.titulo %></h1>
+    <p class="sub"><%= it.achado %></p>
+  </div>
+</div>
+
+<div class="split">
+  <section class="block" aria-labelledby="h-alertas">
+    <header class="block-head">
+      <h2 id="h-alertas">Para resolver <span class="h-count num"><%= it.alertas.length %></span></h2>
+      <p class="meta">Do mais novo para o mais antigo</p>
+    </header>
+    <% if (it.alertas.length === 0) { %>
+      <p class="empty">Tudo certo por aqui. Quando um cliente pedir uma pessoa ou um pedido não chegar ao entregador, aparece aqui.</p>
+    <% } else { %>
+      <ul class="alerts">
+      <% for (const a of it.alertas) { %>
+        <li class="alert">
+          <div class="alert-body">
+            <p class="alert-title"><%= a.motivo %></p>
+            <% if (a.resumo) { %><p class="alert-text"><%= a.resumo %></p><% } %>
+            <p class="meta">
+              <% if (a.cliente) { %><%= a.cliente %> · <% } %><% if (a.pedidoId !== null) { %>pedido #<%= a.pedidoId %> · <% } %><span title="<%= a.quando %>"><%= a.ha %></span>
+            </p>
+          </div>
+          <div class="alert-actions">
+            <% if (a.clienteId !== null) { %><a class="btn" href="/painel/conversas/<%= a.clienteId %>">Abrir conversa</a><% } %>
+            <form method="post" action="/painel/alertas/<%= a.id %>/resolver"><button type="submit" class="btn">Resolvido</button></form>
+          </div>
+        </li>
+      <% } %>
+      </ul>
+    <% } %>
+  </section>
+
+  <aside class="block" aria-labelledby="h-assumidas">
+    <header class="block-head">
+      <h2 id="h-assumidas">Você está atendendo <span class="h-count num"><%= it.assumidas.length %></span></h2>
+    </header>
+    <% if (it.assumidas.length === 0) { %>
+      <p class="empty">O bot está atendendo todas as conversas.</p>
+    <% } else { %>
+      <ul class="taken">
+      <% for (const c of it.assumidas) { %>
+        <li>
+          <a href="/painel/conversas/<%= c.id %>">
+            <span class="t-top"><strong class="name"><%= c.nome %></strong><span class="meta num">bot volta às <%= c.ate %></span></span>
+            <% if (c.previa) { %><span class="t-prev"><%= c.previa %></span><% } %>
+            <% if (c.esperandoVoce) { %><span class="t-tags"><span class="tag tag-warn">Esperando sua resposta</span></span><% } %>
+          </a>
+        </li>
+      <% } %>
+      </ul>
+    <% } %>
+    <p class="hint kv-hint">Quando você responde pelo painel, o bot pausa por 2 horas naquela conversa e depois volta sozinho.</p>
+  </aside>
+</div>

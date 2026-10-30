@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { getSettings } from '../../src/store/settings.js';
+import { getSettings, updateSettings } from '../../src/store/settings.js';
 import { env, form, login, SEGUNDA_10H, setupPanel } from './helpers.js';
 
 type Panel = Awaited<ReturnType<typeof setupPanel>>;
@@ -101,7 +101,7 @@ describe('painel: configurações', () => {
     const cookie = await login(p.app);
     const res = await enviar(p, cookie, { ...corpoBase(), nomeLoja: 'Outro nome', precoRecarga: texto });
     expect(res.statusCode).toBe(422);
-    expect(res.body).toContain('class="erro-campo"');
+    expect(res.body).toContain('class="field-error"');
     expect(res.body).toContain('Outro nome');
     expect(getSettings(p.db).precoRecargaCentavos).toBe(11500);
     expect(getSettings(p.db).nomeLoja).not.toBe('Outro nome');
@@ -231,5 +231,34 @@ describe('painel: aviso de modelos de mensagem ausentes', () => {
     const c2 = await login(todos.app);
     const b2 = (await todos.app.inject({ method: 'GET', url: '/painel/config', headers: { cookie: c2 } })).body;
     expect(b2).not.toContain('Modelos de mensagem faltando');
+  });
+
+  test('pedido sem destino não salva: dono sem WhatsApp, ou entregadores sem ninguém', async () => {
+    const p = await setupPanel();
+    const cookie = await login(p.app);
+    const semDono = await enviar(p, cookie, { ...corpoBase(), destinoPedidos: 'dono', telefoneDono: '' });
+    expect(semDono.statusCode).toBe(422);
+    expect(semDono.body).toContain('Informe o seu WhatsApp: os pedidos novos vão para ele.');
+    const semEntregador = await enviar(p, cookie, { ...corpoBase(), destinoPedidos: 'entregadores', entregadores: '' });
+    expect(semEntregador.statusCode).toBe(422);
+    expect(semEntregador.body).toContain('Cadastre pelo menos um entregador');
+    expect(getSettings(p.db).entregadores).toHaveLength(1);
+  });
+
+  test('avisa quando o que está salvo faz o bot atender mal', async () => {
+    const p = await setupPanel();
+    const s = getSettings(p.db);
+    updateSettings(p.db, {
+      ...s,
+      horarios: { dom: null, seg: null, ter: null, qua: null, qui: null, sex: null, sab: null },
+      destinoPedidos: 'dono',
+      telefoneDono: '',
+    });
+    const cookie = await login(p.app);
+    const body = (await p.app.inject({ method: 'GET', url: '/painel/config', headers: { cookie } })).body;
+    expect(body).toContain('A loja está fechada todos os dias');
+    expect(body).toContain('nenhum pedido chega a ninguém');
+    // A barra do topo também avisa e leva ao horário.
+    expect(body).toContain('href="/painel/config#horario"');
   });
 });

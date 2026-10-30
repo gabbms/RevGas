@@ -60,3 +60,11 @@ export function lastMessageTimes(db: Db): Map<number, string> {
   }[];
   return new Map(rows.map((r) => [r.cliente_id, r.t]));
 }
+
+/** Última mensagem de cada cliente (a de maior id), para a prévia da caixa de conversas. */
+export function lastMessages(db: Db): Map<number, StoredMessage> {
+  const rows = db
+    .prepare('SELECT m.* FROM messages m JOIN (SELECT MAX(id) AS id FROM messages GROUP BY cliente_id) u ON u.id = m.id')
+    .all() as Row[];
+  return new Map(rows.map((r) => [r.cliente_id, fromRow(r)]));
+}

@@ -71,7 +71,9 @@ describe('painel: login', () => {
     expect(page.body).toContain('#1');
     expect(page.body).toContain('Maria');
     expect(page.body).toContain('R$ 115,00');
-    expect(page.body).toContain('Alertas (0)');
+    // Sem alerta aberto o menu não mostra contagem; o pedido esperando sair, sim.
+    expect(page.body).not.toMatch(/aria-label="\d+ abertos"/);
+    expect(page.body).toContain('aria-label="1 esperando"');
     expect(page.body).toContain('hx-get="/painel/pedidos/lista');
   });
 
@@ -225,7 +227,7 @@ describe('painel: alertas', () => {
     const page = await app.inject({ method: 'GET', url: '/painel/alertas', headers: { cookie } });
     expect(page.body).toContain('Atraso no #1');
     expect(page.body).toContain(`/painel/conversas/${cliente.id}`);
-    expect(page.body).toContain('Alertas (1)');
+    expect(page.body).toContain('aria-label="1 abertos"');
     expect(page.body).not.toContain('<b>muito</b>');
 
     const res = await app.inject({ method: 'POST', url: '/painel/alertas/1/resolver', headers: { cookie } });
@@ -233,6 +235,6 @@ describe('painel: alertas', () => {
     expect(res.headers.location).toBe('/painel/alertas');
     const after = await app.inject({ method: 'GET', url: '/painel/alertas', headers: { cookie } });
     expect(after.body).not.toContain('Atraso no #1');
-    expect(after.body).toContain('Alertas (0)');
+    expect(after.body).not.toMatch(/aria-label="\d+ abertos"/);
   });
 });

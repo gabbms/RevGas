@@ -1,8 +1,0 @@
-<h1><%= it.titulo %></h1>
-<% if (it.conversas.length === 0) { %><p class="vazio">Nenhuma conversa ainda.</p><% } %>
-<% for (const c of it.conversas) { %>
-  <a class="card item" href="/painel/conversas/<%= c.id %>">
-    <span class="linha"><strong><%= c.nome %></strong><% if (c.pausado) { %><span class="tag selo">Bot pausado</span><% } %><span class="hora"><%= c.ultima %></span></span>
-    <span class="detalhe"><%= c.telefone %></span>
-  </a>
-<% } %>

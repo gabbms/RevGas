@@ -1,7 +1,7 @@
-<% if (it.mensagens.length === 0) { %><p class="vazio">Nenhuma mensagem nos últimos 30 dias.</p><% } %>
+<% if (it.mensagens.length === 0) { %><p class="empty">Nenhuma mensagem nos últimos 30 dias.</p><% } %>
 <% for (const m of it.mensagens) { %>
   <div class="msg msg-<%= m.autor %>">
-    <div class="msg-quem"><%= m.rotulo %> · <%= m.quando %></div>
-    <div class="msg-texto"><% if (m.audio) { %>🎤 <% } %><%= m.texto %></div>
+    <p class="msg-who"><%= m.rotulo %> · <span class="num"><%= m.quando %></span></p>
+    <p class="msg-text"><% if (m.audio) { %><span class="msg-audio"><%~ it.icons.audio %>Áudio transcrito</span><% } %><%= m.texto %></p>
   </div>
 <% } %>
