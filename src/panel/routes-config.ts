@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { missingTemplates } from '../config/env.js';
+import { isPixKey } from '../domain/pix.js';
 import { updateSettings, type StoreSettings } from '../store/settings.js';
 import { renderPage, type PanelDeps } from './auth.js';
 import { DIAS, PAGAMENTOS, parseConfigForm, settingsToForm, type FormErrors, type FormValues } from './config-form.js';
@@ -12,6 +13,9 @@ export function settingsWarnings(s: StoreSettings): string[] {
   }
   if (s.destinoPedidos === 'dono' && s.telefoneDono.trim() === '') {
     avisos.push('Os pedidos vão para o seu WhatsApp, mas ele não está preenchido: nenhum pedido chega a ninguém.');
+  }
+  if (s.pagamentos.includes('pix_antecipado') && !(s.chavePix && isPixKey(s.chavePix))) {
+    avisos.push('Pix antecipado está ligado, mas a chave Pix não é válida: o cliente receberia uma chave que não existe. Corrija a chave nos pagamentos.');
   }
   if (s.destinoPedidos === 'entregadores' && s.entregadores.length === 0) {
     avisos.push('Os pedidos vão para os entregadores, mas nenhum está cadastrado: nenhum pedido chega a ninguém.');

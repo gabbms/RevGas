@@ -128,7 +128,7 @@ const totalErros = Object.keys(it.erros).length;
       <div class="field">
         <label for="chavePix">Chave Pix</label>
         <input class="input" id="chavePix" name="chavePix" value="<%= it.v.chavePix %>" aria-describedby="chavePix-hint<%= erro('chavePix').length ? ' erro-chavePix' : '' %>"<%~ erro('chavePix').length ? ' aria-invalid="true"' : '' %>>
-        <p class="hint" id="chavePix-hint">Obrigatória para aceitar Pix antecipado.</p>
+        <p class="hint" id="chavePix-hint">Obrigatória para aceitar Pix antecipado. CPF, CNPJ, e-mail, telefone com DDD ou chave aleatória.</p>
         <% for (const m of erro('chavePix')) { %><p class="field-error" id="erro-chavePix"><%= m %></p><% } %>
       </div>
     </div>

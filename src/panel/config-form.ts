@@ -1,4 +1,5 @@
 import { normalizePhone } from '../domain/phone.js';
+import { isPixKey, PIX_KEY_HELP } from '../domain/pix.js';
 import type { PaymentMethod, WeekdayKey } from '../domain/types.js';
 import { StoreSettingsSchema, type StoreSettings } from '../store/settings.js';
 
@@ -175,6 +176,8 @@ export function parseConfigForm(body: Record<string, unknown>): ParsedForm {
   const chavePix = text(v, 'chavePix');
   if (pagamentos.includes('pix_antecipado') && chavePix === '') {
     add(erros, 'chavePix', 'Informe a chave Pix para aceitar Pix antecipado.');
+  } else if (chavePix !== '' && !isPixKey(chavePix)) {
+    add(erros, 'chavePix', `Essa chave Pix não parece válida. ${PIX_KEY_HELP}`);
   }
 
   const horarios = {} as StoreSettings['horarios'];

@@ -13,7 +13,7 @@ function corpoBase(): Record<string, string> {
     precoCompleto: '320,00',
     previsaoEntregaMin: '40',
     bairros: 'Centro\nSão João',
-    chavePix: 'cnpj 00.000.000/0001-00',
+    chavePix: '00.000.000/0001-00',
     telefoneDono: '86999990000',
     entregadores: 'João; 86911110000',
     destinoPedidos: 'entregadores',
@@ -161,6 +161,26 @@ describe('painel: configurações', () => {
     expect(res.statusCode).toBe(422);
     expect(res.body).toContain('Informe a chave Pix para aceitar Pix antecipado');
     expect(getSettings(p.db).chavePix).toBe('cnpj 00.000.000/0001-00');
+  });
+
+  test('chave Pix com formato inválido (ex.: texto de exemplo) não salva', async () => {
+    const p = await setupPanel();
+    const cookie = await login(p.app);
+    const res = await enviar(p, cookie, { ...corpoBase(), chavePix: 'chave-pix-aqui' }, ['dinheiro', 'pix_antecipado']);
+    expect(res.statusCode).toBe(422);
+    expect(res.body).toContain('Essa chave Pix não parece válida');
+    expect(getSettings(p.db).chavePix).toBe('cnpj 00.000.000/0001-00');
+    // Mesmo sem Pix antecipado, uma chave digitada errada é recusada em vez de ficar guardada.
+    const sem = await enviar(p, cookie, { ...corpoBase(), chavePix: 'chave-pix-aqui' }, ['dinheiro']);
+    expect(sem.statusCode).toBe(422);
+  });
+
+  test('avisa quando Pix antecipado está ligado com uma chave salva inválida', async () => {
+    const p = await setupPanel();
+    updateSettings(p.db, { ...getSettings(p.db), pagamentos: ['dinheiro', 'pix_antecipado'], chavePix: 'chave-pix-aqui' });
+    const cookie = await login(p.app);
+    const body = (await p.app.inject({ method: 'GET', url: '/painel/config', headers: { cookie } })).body;
+    expect(body).toContain('a chave Pix não é válida');
   });
 
   test('sem chave Pix e sem Pix antecipado salva chave como nulo', async () => {
