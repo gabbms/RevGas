@@ -9,7 +9,8 @@ export type SendResult =
 
 const WINDOW_MS = 24 * 60 * 60 * 1000;
 
-export function createOutbox(db: Db, api: WhatsAppApi, clock: () => Date) {
+/** `semJanela`: provedores sem a regra das 24 h da Meta (WAHA) mandam texto livre a qualquer hora. */
+export function createOutbox(db: Db, api: WhatsAppApi, clock: () => Date, opts: { semJanela?: boolean } = {}) {
   function windowOpen(telefone: string, now: Date = clock()): boolean {
     const rows = db.prepare('SELECT telefone, ultima_entrada_em FROM contact_windows').all() as {
       telefone: string;
@@ -31,7 +32,7 @@ export function createOutbox(db: Db, api: WhatsAppApi, clock: () => Date) {
 
   async function send(m: OutgoingMessage): Promise<SendResult> {
     try {
-      if (windowOpen(m.telefone)) {
+      if (opts.semJanela || windowOpen(m.telefone)) {
         const { wamid } = await api.sendText(m.telefone, m.texto);
         return { ok: true, wamid, via: 'texto' };
       }

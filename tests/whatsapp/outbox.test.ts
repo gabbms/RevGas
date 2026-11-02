@@ -12,6 +12,13 @@ function setup() {
 }
 
 describe('outbox', () => {
+  test('semJanela (WAHA): manda texto livre mesmo sem janela aberta e ignora o modelo', async () => {
+    const fake = new FakeWhatsApp();
+    const ob = createOutbox(openDb(':memory:'), fake, () => now, { semJanela: true });
+    expect(await ob.send({ telefone: '5586999991234', texto: 'oi', template: tpl })).toMatchObject({ ok: true, via: 'texto' });
+    expect(fake.sent).toEqual([{ to: '5586999991234', kind: 'text', body: 'oi' }]);
+  });
+
   test('janela aberta → texto (mesmo com telefone sem o 9º dígito)', async () => {
     const { fake, ob } = setup();
     ob.registerInbound('5586999991234', new Date(now.getTime() - 60_000));

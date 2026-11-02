@@ -4,3 +4,6 @@ node_modules/
 data/
 dist/
 .taste-skill/
+
+# WAHA: sessão do WhatsApp e mídias
+.waha/

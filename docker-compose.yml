@@ -1,0 +1,31 @@
+# WAHA: WhatsApp NÃO oficial, só para testes e demonstração (o número pode ser banido).
+# Guia: docs/WAHA.md. Sobe com: docker compose up -d
+# O Compose lê o .env desta pasta: WAHA_API_KEY e WAHA_WEBHOOK_SECRET vêm de lá.
+services:
+  waha:
+    image: devlikeapro/waha
+    container_name: revgas-waha
+    restart: unless-stopped
+    ports:
+      # Só o seu computador acessa (127.0.0.1). Nunca exponha esta porta na internet.
+      - "127.0.0.1:3001:3000"
+    environment:
+      WHATSAPP_DEFAULT_ENGINE: WEBJS
+      WHATSAPP_START_SESSION: default
+      WAHA_API_KEY: ${WAHA_API_KEY:?defina WAHA_API_KEY no .env}
+      WAHA_DASHBOARD_USERNAME: admin
+      WAHA_DASHBOARD_PASSWORD: ${WAHA_API_KEY}
+      WHATSAPP_SWAGGER_USERNAME: admin
+      WHATSAPP_SWAGGER_PASSWORD: ${WAHA_API_KEY}
+      # Cada mensagem recebida vai para o bot, que roda no seu computador (fora do Docker).
+      WHATSAPP_HOOK_URL: http://host.docker.internal:3000/webhook/waha
+      WHATSAPP_HOOK_EVENTS: message
+      WHATSAPP_HOOK_CUSTOM_HEADERS: "X-Revgas-Secret:${WAHA_WEBHOOK_SECRET:?defina WAHA_WEBHOOK_SECRET no .env}"
+      # Áudios e comprovantes precisam ser baixados para o bot conseguir lê-los.
+      WHATSAPP_DOWNLOAD_MEDIA: "true"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      # A sessão do WhatsApp (QR já escaneado) fica aqui; sem isso, escaneia-se de novo a cada reinício.
+      - ./.waha/sessions:/app/.sessions
+      - ./.waha/media:/app/.media

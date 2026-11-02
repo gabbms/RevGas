@@ -24,7 +24,7 @@ const env = loadEnv({
 });
 const NOW = new Date('2026-11-02T13:00:00Z');
 const body = readFileSync(new URL('./fixtures/webhook-texto-audio.json', import.meta.url));
-const sig = (b: Buffer) => 'sha256=' + createHmac('sha256', env.WA_APP_SECRET).update(b).digest('hex');
+const sig = (b: Buffer) => 'sha256=' + createHmac('sha256', 'segredo').update(b).digest('hex');
 
 const fakeAnthropic = (text: string) =>
   ({

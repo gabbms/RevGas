@@ -53,6 +53,23 @@ export function extractReply(m: Anthropic.Beta.BetaMessage): string | null {
   return text === '' ? null : text;
 }
 
+/**
+ * O histórico que o modelo recebe é só texto: ele não vê as chamadas de ferramenta dos turnos anteriores, então
+ * não sabe o `rascunhoId` do resumo que o cliente acabou de ver. Sem ele, ao receber o "sim" o modelo prepara o
+ * pedido de novo, em vez de confirmar, e o cliente fica preso num ciclo de resumos. Este aviso devolve o número.
+ * Só aparece quando o cliente de fato viu o resumo antes da mensagem dele (a mesma regra de confirmar_pedido).
+ */
+export function openDraftNote(db: Db, clienteId: number, ultimaMensagemClienteEm: Date): string | null {
+  const d = latestOpenDraft(db, clienteId);
+  if (!d || d.apresentadoEm === null) return null;
+  if (new Date(d.apresentadoEm).getTime() >= ultimaMensagemClienteEm.getTime()) return null;
+  return (
+    `Resumo aguardando confirmação: rascunhoId ${d.id}, total ${formatBRL(d.totalCentavos)}. O cliente já viu esse resumo. ` +
+    'Se a última mensagem dele for um sim a esse resumo, chame confirmar_pedido com esse rascunhoId e NÃO chame preparar_pedido de novo. ' +
+    'Se ele pedir qualquer mudança, aí sim chame preparar_pedido com os dados novos e mostre o novo resumo.'
+  );
+}
+
 function historyFor(db: Db, clienteId: number, now: Date): MessageParam[] {
   return buildHistory(recentMessages(db, clienteId, new Date(now.getTime() - HISTORY_WINDOW_MS)));
 }
@@ -88,10 +105,11 @@ export function createAgent(d: {
       ...d.makeContext(clienteId),
       ultimaMensagemClienteEm: lastCustomerMessageAt(d.db, clienteId) ?? new Date(0),
     };
+    const nota = openDraftNote(d.db, clienteId, ctx.ultimaMensagemClienteEm);
     const final = await d.client.beta.messages.toolRunner({
       model: d.model,
       max_tokens: 16000,
-      system: SYSTEM_PROMPT,
+      system: nota ? [{ type: 'text', text: SYSTEM_PROMPT }, { type: 'text', text: nota }] : SYSTEM_PROMPT,
       tools: buildTools(ctx),
       messages,
       output_config: { effort: d.effort },

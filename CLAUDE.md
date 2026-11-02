@@ -4,7 +4,7 @@ Bot com IA para os clientes de uma revenda de gás (que usa o software RevGás) 
 
 - Por quê e como foi decidido: `docs/superpowers/specs/2026-10-28-chatbot-whatsapp-revenda-gas-design.md` (fonte de verdade do comportamento).
 - Como foi construído, tarefa a tarefa: `docs/superpowers/plans/2026-10-28-chatbot-whatsapp-revenda-gas.md`.
-- Implantação (Meta, variáveis, VPS): `README.md`. Teste passo a passo para iniciantes: `docs/GUIA-DE-TESTE.md`.
+- Implantação (Meta, variáveis, VPS): `README.md`. Teste passo a passo para iniciantes: `docs/GUIA-DE-TESTE.md`. Teste sem a Meta, com WAHA: `docs/WAHA.md`.
 
 ## Comandos
 
@@ -30,6 +30,7 @@ Node 22+, TypeScript strict ESM (NodeNext, imports com `.js`), Fastify 5, better
 - `orders/` – criação/alteração/cancelamento, despacho aos entregadores, respostas da equipe.
 - `domain/` – regras puras (preço, horário, validação, redação de dados sensíveis). Sem I/O.
 - `store/` – acesso ao SQLite. `db/migrations/` – SQL numerado; nova migração = novo arquivo + entrada em `MIGRATIONS` em `db/connection.ts`. Nunca edite uma migração já publicada.
+- `whatsapp/waha.ts` – canal WAHA (não oficial), escolhido por `WA_PROVIDER=waha`; sem janela de 24 h nem modelos. Só para teste/demonstração, nunca produção.
 - `panel/`, `jobs/` (lembretes, liberação de agendados), `whatsapp/` (API, outbox com janela de 24 h, templates).
 
 ## Regras que o código não mostra sozinho

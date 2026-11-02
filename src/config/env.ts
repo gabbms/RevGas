@@ -6,10 +6,16 @@ const EnvSchema = z.object({
   PORT: z.coerce.number().int().positive().default(3000),
   DB_PATH: z.string().min(1).default('data/revgas.db'),
   PUBLIC_URL: z.string().min(1),
-  WA_TOKEN: z.string().min(1),
-  WA_PHONE_NUMBER_ID: z.string().min(1),
-  WA_APP_SECRET: z.string().min(1),
-  WA_VERIFY_TOKEN: z.string().min(1),
+  // 'meta' = API oficial (padrão). 'waha' = WAHA, não oficial, só para testes e demonstração.
+  WA_PROVIDER: z.enum(['meta', 'waha']).default('meta'),
+  WA_TOKEN: optionalText,
+  WA_PHONE_NUMBER_ID: optionalText,
+  WA_APP_SECRET: optionalText,
+  WA_VERIFY_TOKEN: optionalText,
+  WAHA_URL: optionalText,
+  WAHA_API_KEY: optionalText,
+  WAHA_SESSION: z.string().min(1).default('default'),
+  WAHA_WEBHOOK_SECRET: optionalText,
   WA_GRAPH_VERSION: z.string().min(1).default('v23.0'),
   WA_TPL_PEDIDO: optionalText,
   WA_TPL_STATUS: optionalText,
@@ -22,6 +28,14 @@ const EnvSchema = z.object({
   TRANSCRIBE_MODEL: z.string().min(1).default('whisper-1'),
   PANEL_PASSWORD: z.string().min(12),
   SESSION_SECRET: z.string().min(32),
+}).superRefine((env, ctx) => {
+  const exigidas =
+    env.WA_PROVIDER === 'meta'
+      ? (['WA_TOKEN', 'WA_PHONE_NUMBER_ID', 'WA_APP_SECRET', 'WA_VERIFY_TOKEN'] as const)
+      : (['WAHA_URL', 'WAHA_WEBHOOK_SECRET'] as const);
+  for (const campo of exigidas) {
+    if (!env[campo]) ctx.addIssue({ code: 'custom', path: [campo], message: `obrigatório com WA_PROVIDER=${env.WA_PROVIDER}` });
+  }
 });
 
 export type Env = z.infer<typeof EnvSchema>;

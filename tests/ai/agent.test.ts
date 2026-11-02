@@ -1,6 +1,6 @@
 import type Anthropic from '@anthropic-ai/sdk';
 import { describe, expect, test, vi } from 'vitest';
-import { buildHistory, createAgent, createCustomerTurnHandler, extractReply, type Agent } from '../../src/ai/agent.js';
+import { buildHistory, createAgent, createCustomerTurnHandler, extractReply, openDraftNote, type Agent } from '../../src/ai/agent.js';
 import { SYSTEM_PROMPT } from '../../src/ai/prompt.js';
 import { createToolHandlers, type ToolContext } from '../../src/ai/tool-handlers.js';
 import { createAlertService } from '../../src/alerts/service.js';
@@ -111,6 +111,47 @@ describe('buildHistory', () => {
 
   test('histórico vazio devolve []', () => {
     expect(buildHistory([])).toEqual([]);
+  });
+});
+
+describe('openDraftNote', () => {
+  const pedido = { quantidade: 1, modo: 'troca', pagamento: 'cartao', endereco: { rua: 'Rua A', numero: '1', bairro: 'Centro' } } as const;
+  const DEPOIS = new Date('2026-11-02T13:00:30Z');
+
+  test('resumo que o cliente viu antes do "sim": o aviso traz o rascunhoId e o total', async () => {
+    const s = setup();
+    const p = await createToolHandlers(s.makeContext(s.cliente.id)).prepararPedido(pedido);
+    if (!('rascunhoId' in p)) throw new Error('esperava rascunho');
+    markDraftsPresented(s.db, s.cliente.id, new Date('2026-11-02T13:00:06Z'));
+    const nota = openDraftNote(s.db, s.cliente.id, DEPOIS);
+    expect(nota).toContain(`rascunhoId ${p.rascunhoId}`);
+    expect(nota).toContain(p.total);
+    expect(nota).toContain('NÃO chame preparar_pedido de novo');
+  });
+
+  test('sem aviso: sem rascunho, resumo não apresentado, ou apresentado depois da mensagem do cliente', async () => {
+    const s = setup();
+    expect(openDraftNote(s.db, s.cliente.id, DEPOIS)).toBeNull();
+    await createToolHandlers(s.makeContext(s.cliente.id)).prepararPedido(pedido);
+    expect(openDraftNote(s.db, s.cliente.id, DEPOIS)).toBeNull(); // ainda não chegou ao cliente
+    markDraftsPresented(s.db, s.cliente.id, new Date('2026-11-02T13:01:00Z'));
+    expect(openDraftNote(s.db, s.cliente.id, new Date('2026-11-02T13:00:30Z'))).toBeNull(); // cliente falou antes de ver
+  });
+
+  test('o agente manda o aviso como segundo bloco do sistema, e só quando há resumo a confirmar', async () => {
+    const s = setup();
+    const p = await createToolHandlers(s.makeContext(s.cliente.id)).prepararPedido(pedido);
+    if (!('rascunhoId' in p)) throw new Error('esperava rascunho');
+    markDraftsPresented(s.db, s.cliente.id, new Date('2026-11-02T13:00:06Z'));
+    s.setTime(DEPOIS);
+    s.say('cliente', 'sim', DEPOIS);
+    const { client, toolRunner } = fakeClient(async () => textMsg('Pedido feito!'));
+    const agent = createAgent({ client, model: 'm', effort: 'low', db: s.db, makeContext: s.makeContext, clock: s.clock });
+    await agent.reply(s.cliente.id);
+    const system = (toolRunner.mock.calls[0]![0] as { system: { type: string; text: string }[] }).system;
+    expect(system).toHaveLength(2);
+    expect(system[0]!.text).toBe(SYSTEM_PROMPT);
+    expect(system[1]!.text).toContain(`rascunhoId ${p.rascunhoId}`);
   });
 });
 

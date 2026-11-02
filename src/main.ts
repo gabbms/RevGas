@@ -22,6 +22,7 @@ import { openOrdersFor } from './store/orders.js';
 import { getSettings } from './store/settings.js';
 import { createWhatsAppApi, type WhatsAppApi } from './whatsapp/api.js';
 import { createOutbox } from './whatsapp/outbox.js';
+import { createWahaApi, createWahaLidResolver } from './whatsapp/waha.js';
 
 const HTTP_TIMEOUT_MS = 20_000;
 
@@ -47,26 +48,37 @@ export interface AppContext {
   readonly stopScheduler: (() => void) | null;
 }
 
+function createApi(env: Env): WhatsAppApi {
+  if (env.WA_PROVIDER === 'waha' && env.WAHA_URL) {
+    return createWahaApi({
+      baseUrl: env.WAHA_URL,
+      session: env.WAHA_SESSION,
+      fetch: fetchWithTimeout,
+      ...(env.WAHA_API_KEY ? { apiKey: env.WAHA_API_KEY } : {}),
+    });
+  }
+  if (!env.WA_TOKEN || !env.WA_PHONE_NUMBER_ID) throw new Error('WA_TOKEN e WA_PHONE_NUMBER_ID são obrigatórios com WA_PROVIDER=meta');
+  return createWhatsAppApi({
+    token: env.WA_TOKEN,
+    phoneNumberId: env.WA_PHONE_NUMBER_ID,
+    graphVersion: env.WA_GRAPH_VERSION,
+    fetch: fetchWithTimeout,
+  });
+}
+
 export async function createAppContext(env: Env, overrides: AppOverrides = {}): Promise<AppContext> {
   const clock = overrides.clock ?? (() => new Date());
   const db = openDb(env.DB_PATH);
   const settings = () => getSettings(db);
 
-  const api =
-    overrides.api ??
-    createWhatsAppApi({
-      token: env.WA_TOKEN,
-      phoneNumberId: env.WA_PHONE_NUMBER_ID,
-      graphVersion: env.WA_GRAPH_VERSION,
-      fetch: fetchWithTimeout,
-    });
+  const api = overrides.api ?? createApi(env);
   const transcriber =
     overrides.transcriber ??
     createOpenAITranscriber({ apiKey: env.OPENAI_API_KEY, model: env.TRANSCRIBE_MODEL, fetch: fetchWithTimeout });
   const anthropic =
     overrides.anthropic ?? new Anthropic({ apiKey: env.ANTHROPIC_API_KEY, timeout: 60_000, maxRetries: 2 });
 
-  const outbox = createOutbox(db, api, clock);
+  const outbox = createOutbox(db, api, clock, { semJanela: env.WA_PROVIDER === 'waha' });
   const alerts = createAlertService({
     db,
     outbox,
@@ -135,6 +147,16 @@ export async function createAppContext(env: Env, overrides: AppOverrides = {}): 
     // Sem corpo de requisição nos logs (o Fastify só registra método, URL e status).
     logger: process.env.NODE_ENV === 'production',
     onInbound: (events) => router.handle(events),
+    ...(env.WA_PROVIDER === 'waha' && env.WAHA_URL
+      ? {
+          resolveLid: createWahaLidResolver({
+            baseUrl: env.WAHA_URL,
+            session: env.WAHA_SESSION,
+            fetch: fetchWithTimeout,
+            ...(env.WAHA_API_KEY ? { apiKey: env.WAHA_API_KEY } : {}),
+          }),
+        }
+      : {}),
     registerPanel: (a) => registerPanel(a, { db, env, orders, alerts, outbox, settings, clock }),
   });
 
@@ -167,7 +189,11 @@ export async function createAppContext(env: Env, overrides: AppOverrides = {}): 
 
 async function main(): Promise<void> {
   const env = loadEnv();
-  warnMissingTemplates(env);
+  if (env.WA_PROVIDER === 'waha') {
+    console.warn('aviso: WA_PROVIDER=waha usa WhatsApp não oficial. Só para testes e demonstração: o número pode ser banido.');
+  } else {
+    warnMissingTemplates(env);
+  }
   const ctx = await createAppContext(env);
   ctx.startJobs();
 

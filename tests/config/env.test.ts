@@ -57,4 +57,23 @@ describe('modelos de mensagem ausentes', () => {
     warnMissingTemplates(loadEnv({ ...base, WA_TPL_PEDIDO: 'a', WA_TPL_ALERTA: 'b', WA_TPL_STATUS: 'c', WA_TPL_LEMBRETE: 'd' }), nada);
     expect(nada).not.toHaveBeenCalled();
   });
+
+  describe('provedor WAHA', () => {
+    const { WA_TOKEN: _t, WA_PHONE_NUMBER_ID: _p, WA_APP_SECRET: _a, WA_VERIFY_TOKEN: _v, ...semMeta } = base;
+    const waha = { ...semMeta, WA_PROVIDER: 'waha', WAHA_URL: 'http://localhost:3001', WAHA_WEBHOOK_SECRET: 'seg' };
+
+    test('não exige as variáveis da Meta, só as do WAHA', () => {
+      const env = loadEnv(waha);
+      expect(env.WA_PROVIDER).toBe('waha');
+      expect(env.WAHA_SESSION).toBe('default');
+      expect(() => loadEnv({ ...waha, WAHA_URL: undefined })).toThrow();
+      expect(() => loadEnv({ ...waha, WAHA_WEBHOOK_SECRET: undefined })).toThrow();
+    });
+
+    test('o padrão continua sendo a Meta, que exige as próprias variáveis', () => {
+      expect(loadEnv(base).WA_PROVIDER).toBe('meta');
+      expect(() => loadEnv(semMeta)).toThrow();
+      expect(() => loadEnv({ ...base, WA_PROVIDER: 'outro' })).toThrow();
+    });
+  });
 });
