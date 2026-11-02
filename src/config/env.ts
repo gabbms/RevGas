@@ -24,7 +24,11 @@ const EnvSchema = z.object({
   ANTHROPIC_API_KEY: z.string().min(1),
   AI_MODEL: z.string().min(1).default('claude-haiku-5-5'),
   AI_EFFORT: z.enum(['low', 'medium', 'high']).default('medium'),
-  OPENAI_API_KEY: z.string().min(1),
+  // Transcrição de áudio: OpenAI por padrão. Para outro provedor compatível (ex.: Groq), defina TRANSCRIBE_URL,
+  // TRANSCRIBE_MODEL e TRANSCRIBE_API_KEY; sem TRANSCRIBE_API_KEY vale OPENAI_API_KEY.
+  OPENAI_API_KEY: optionalText,
+  TRANSCRIBE_API_KEY: optionalText,
+  TRANSCRIBE_URL: optionalText,
   TRANSCRIBE_MODEL: z.string().min(1).default('whisper-1'),
   PANEL_PASSWORD: z.string().min(12),
   SESSION_SECRET: z.string().min(32),
@@ -33,6 +37,9 @@ const EnvSchema = z.object({
     env.WA_PROVIDER === 'meta'
       ? (['WA_TOKEN', 'WA_PHONE_NUMBER_ID', 'WA_APP_SECRET', 'WA_VERIFY_TOKEN'] as const)
       : (['WAHA_URL', 'WAHA_WEBHOOK_SECRET'] as const);
+  if (!env.OPENAI_API_KEY && !env.TRANSCRIBE_API_KEY) {
+    ctx.addIssue({ code: 'custom', path: ['TRANSCRIBE_API_KEY'], message: 'defina OPENAI_API_KEY ou TRANSCRIBE_API_KEY' });
+  }
   for (const campo of exigidas) {
     if (!env[campo]) ctx.addIssue({ code: 'custom', path: [campo], message: `obrigatório com WA_PROVIDER=${env.WA_PROVIDER}` });
   }

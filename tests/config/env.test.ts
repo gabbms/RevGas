@@ -76,4 +76,19 @@ describe('modelos de mensagem ausentes', () => {
       expect(() => loadEnv({ ...base, WA_PROVIDER: 'outro' })).toThrow();
     });
   });
+
+  describe('transcrição de áudio', () => {
+    const { OPENAI_API_KEY: _o, ...semOpenai } = { ...base, OPENAI_API_KEY: 'k' };
+
+    test('precisa de OPENAI_API_KEY ou de TRANSCRIBE_API_KEY', () => {
+      expect(() => loadEnv(semOpenai)).toThrow();
+      expect(loadEnv({ ...semOpenai, TRANSCRIBE_API_KEY: 'g' }).TRANSCRIBE_API_KEY).toBe('g');
+      expect(loadEnv({ ...semOpenai, OPENAI_API_KEY: 'k' }).OPENAI_API_KEY).toBe('k');
+    });
+
+    test('endereço do provedor é opcional', () => {
+      expect(loadEnv(base).TRANSCRIBE_URL).toBeUndefined();
+      expect(loadEnv({ ...base, TRANSCRIBE_URL: 'https://api.groq.com/openai/v1/audio/transcriptions' }).TRANSCRIBE_URL).toContain('groq');
+    });
+  });
 });

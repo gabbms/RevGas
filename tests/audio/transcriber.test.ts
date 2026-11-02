@@ -39,4 +39,24 @@ describe('transcriber', () => {
       createOpenAITranscriber({ apiKey: 'k', model: 'm', fetch: fakeFetch }).transcribe(Buffer.from('a'), 'audio/ogg'),
     ).rejects.toThrow();
   });
+
+  test('provedor compatível (ex.: Groq): usa o endereço, o modelo e a chave informados', async () => {
+    let url = '';
+    let init: RequestInit | undefined;
+    const fakeFetch = (async (u: string, i: RequestInit) => {
+      url = u;
+      init = i;
+      return new Response(JSON.stringify({ text: 'oi' }), { status: 200 });
+    }) as unknown as typeof fetch;
+    const t = createOpenAITranscriber({
+      apiKey: 'gsk',
+      model: 'whisper-large-v3-turbo',
+      url: 'https://api.groq.com/openai/v1/audio/transcriptions',
+      fetch: fakeFetch,
+    });
+    expect(await t.transcribe(Buffer.from('a'), 'audio/ogg')).toBe('oi');
+    expect(url).toBe('https://api.groq.com/openai/v1/audio/transcriptions');
+    expect((init!.headers as Record<string, string>).Authorization).toBe('Bearer gsk');
+    expect((init!.body as FormData).get('model')).toBe('whisper-large-v3-turbo');
+  });
 });

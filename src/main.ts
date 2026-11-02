@@ -74,7 +74,12 @@ export async function createAppContext(env: Env, overrides: AppOverrides = {}): 
   const api = overrides.api ?? createApi(env);
   const transcriber =
     overrides.transcriber ??
-    createOpenAITranscriber({ apiKey: env.OPENAI_API_KEY, model: env.TRANSCRIBE_MODEL, fetch: fetchWithTimeout });
+    createOpenAITranscriber({
+      apiKey: (env.TRANSCRIBE_API_KEY ?? env.OPENAI_API_KEY)!, // o schema garante que uma das duas existe
+      model: env.TRANSCRIBE_MODEL,
+      ...(env.TRANSCRIBE_URL ? { url: env.TRANSCRIBE_URL } : {}),
+      fetch: fetchWithTimeout,
+    });
   const anthropic =
     overrides.anthropic ?? new Anthropic({ apiKey: env.ANTHROPIC_API_KEY, timeout: 60_000, maxRetries: 2 });
 

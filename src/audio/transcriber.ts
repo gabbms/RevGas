@@ -27,7 +27,10 @@ export function audioFileName(mime: string): string {
   return `audio.${EXT[baseMime(mime)] ?? 'bin'}`;
 }
 
-export function createOpenAITranscriber(o: { apiKey: string; model: string; fetch?: typeof fetch }): Transcriber {
+export const OPENAI_TRANSCRIBE_URL = 'https://api.openai.com/v1/audio/transcriptions';
+
+/** Serve para a OpenAI e para qualquer provedor com a mesma interface de transcrição (ex.: Groq), trocando `url` e `model`. */
+export function createOpenAITranscriber(o: { apiKey: string; model: string; url?: string; fetch?: typeof fetch }): Transcriber {
   const doFetch = o.fetch ?? fetch;
   return {
     async transcribe(audio, mime) {
@@ -36,12 +39,12 @@ export function createOpenAITranscriber(o: { apiKey: string; model: string; fetc
       form.set('model', o.model);
       form.set('language', 'pt');
       form.set('file', new Blob([new Uint8Array(audio)], { type: base }), audioFileName(base));
-      const res = await doFetch('https://api.openai.com/v1/audio/transcriptions', {
+      const res = await doFetch(o.url ?? OPENAI_TRANSCRIBE_URL, {
         method: 'POST',
         headers: { Authorization: `Bearer ${o.apiKey}` },
         body: form,
       });
-      if (!res.ok) throw new Error(`OpenAI transcrição falhou: HTTP ${res.status}`);
+      if (!res.ok) throw new Error(`transcrição falhou: HTTP ${res.status}`);
       const json = (await res.json()) as { text?: unknown };
       return typeof json.text === 'string' ? json.text : '';
     },
