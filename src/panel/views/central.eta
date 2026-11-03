@@ -1,0 +1,3 @@
+<div id="central" hx-get="/painel/central" hx-trigger="every 10s" hx-swap="innerHTML">
+  <%~ include('_central', it) %>
+</div>

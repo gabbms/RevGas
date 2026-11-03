@@ -52,6 +52,14 @@ export function lastCustomerMessageAt(db: Db, clienteId: number): Date | null {
   return r.t ? new Date(r.t) : null;
 }
 
+/** Mensagens de todos os clientes desde `since`, da mais antiga para a mais nova. */
+export function messagesSince(db: Db, since: Date): Pick<StoredMessage, 'clienteId' | 'autor' | 'criadoEm'>[] {
+  const rows = db
+    .prepare('SELECT cliente_id, autor, criado_em FROM messages WHERE criado_em >= ? ORDER BY criado_em, id')
+    .all(since.toISOString()) as { cliente_id: number; autor: StoredMessage['autor']; criado_em: string }[];
+  return rows.map((r) => ({ clienteId: r.cliente_id, autor: r.autor, criadoEm: r.criado_em }));
+}
+
 /** Horário da última mensagem de cada cliente (quem nunca falou não aparece). */
 export function lastMessageTimes(db: Db): Map<number, string> {
   const rows = db.prepare('SELECT cliente_id, MAX(criado_em) AS t FROM messages GROUP BY cliente_id').all() as {

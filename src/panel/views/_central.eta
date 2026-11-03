@@ -1,0 +1,102 @@
+<div class="central">
+  <div>
+    <h1 class="central-title"><%= it.saudacao %></h1>
+    <p class="central-brief"><%= it.briefing %></p>
+  </div>
+
+  <div class="stat-grid">
+    <% for (const k of it.kpis) { %>
+      <div class="card stat">
+        <div class="stat-label"><%= k.rotulo %></div>
+        <div class="stat-value"><%= k.valor %></div>
+        <div class="stat-note"><%= k.nota %></div>
+      </div>
+    <% } %>
+  </div>
+
+  <div class="central-cols">
+    <div class="central-main">
+      <section class="card" aria-labelledby="h-atencao">
+        <header class="card-head">
+          <h2 id="h-atencao">Precisa de você agora</h2>
+          <span class="card-side"><%= it.atencaoTotal %></span>
+        </header>
+        <% if (it.atencao.length === 0) { %>
+          <p class="all-clear"><%~ it.icons.check %>Tudo em dia. A ÍRIS avisa assim que algo precisar de você.</p>
+        <% } else { %>
+          <ul class="attention">
+            <% for (const a of it.atencao) { %>
+              <li class="attention-row<%= a.tom === 'alerta' ? ' is-alert' : '' %>">
+                <span class="attention-icon"><%~ it.icons[a.icone] %></span>
+                <div class="attention-text">
+                  <p class="attention-title"><%= a.titulo %></p>
+                  <p class="attention-sub"><%= a.sub %></p>
+                </div>
+                <% if (a.tempo) { %><span class="mono attention-time"><%= a.tempo %></span><% } %>
+                <a class="btn" href="<%= a.acao.href %>"><%= a.acao.rotulo %></a>
+              </li>
+            <% } %>
+          </ul>
+        <% } %>
+      </section>
+
+      <section class="card" aria-labelledby="h-horas">
+        <header class="card-head card-head-wide">
+          <h2 id="h-horas">Pedidos por hora</h2>
+          <span class="card-side mono">Pico hoje: <%= it.horas.pico %></span>
+        </header>
+        <div class="hours">
+          <div class="hours-lines" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+          <div class="hours-bars">
+            <% for (const h of it.horas.barras) { %>
+              <div class="hour<%= h.atual ? ' is-now' : '' %><%= h.futura ? ' is-future' : '' %>">
+                <span class="mono hour-value"><%= h.valor %></span>
+                <span class="hour-bar" style="height:<%= h.altura %>"></span>
+              </div>
+            <% } %>
+          </div>
+        </div>
+        <div class="hour-labels">
+          <% for (const h of it.horas.barras) { %><span class="mono<%= h.atual ? ' is-now' : '' %>"><%= h.rotulo %></span><% } %>
+        </div>
+      </section>
+    </div>
+
+    <div class="central-side">
+      <section class="card" aria-labelledby="h-assistente">
+        <header class="card-head"><h2 id="h-assistente">Assistente no WhatsApp</h2></header>
+        <div class="assistant">
+          <div class="ring">
+            <svg viewBox="0 0 128 128" width="128" height="128" aria-hidden="true">
+              <circle class="ring-track" cx="64" cy="64" r="56"/>
+              <circle class="ring-value" cx="64" cy="64" r="56" stroke-dasharray="<%= it.assistente.traco %>" transform="rotate(-90 64 64)"/>
+            </svg>
+            <div class="ring-center">
+              <%~ it.icons.chama %>
+              <div class="ring-number"><%= it.assistente.automatico === null ? '—' : it.assistente.automatico + '%' %></div>
+              <div class="ring-label">automático</div>
+            </div>
+          </div>
+          <dl class="assistant-stats">
+            <% for (const n of it.assistente.numeros) { %>
+              <div><dt><%= n.rotulo %></dt><dd<%~ n.alerta ? ' class="is-alert"' : '' %>><%= n.valor %></dd></div>
+            <% } %>
+          </dl>
+        </div>
+      </section>
+
+      <section class="card" aria-labelledby="h-atividade">
+        <header class="card-head"><h2 id="h-atividade">Atividade de hoje</h2></header>
+        <% if (it.atividade.length === 0) { %>
+          <p class="card-empty">Nada aconteceu ainda hoje.</p>
+        <% } else { %>
+          <ul class="feed">
+            <% for (const f of it.atividade) { %>
+              <li><span class="mono"><%= f.hora %></span><span><%= f.texto %></span></li>
+            <% } %>
+          </ul>
+        <% } %>
+      </section>
+    </div>
+  </div>
+</div>

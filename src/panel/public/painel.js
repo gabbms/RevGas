@@ -62,6 +62,38 @@
     });
   }
 
+  // Tema e menu recolhido ficam guardados neste navegador.
+  function guardar(chave, valor) {
+    try {
+      localStorage.setItem(chave, valor);
+    } catch (e) {
+      // Navegação privada: vale só nesta página.
+    }
+  }
+  var raiz = document.documentElement;
+  document.addEventListener('click', function (e) {
+    if (e.target.closest('[data-theme-toggle]')) {
+      var tema = raiz.dataset.theme === 'light' ? 'dark' : 'light';
+      raiz.dataset.theme = tema;
+      guardar('revgas-theme', tema);
+    }
+    if (e.target.closest('[data-side-toggle]')) {
+      var recolhido = raiz.dataset.side !== 'min';
+      if (recolhido) raiz.dataset.side = 'min';
+      else delete raiz.dataset.side;
+      guardar('revgas-side', recolhido ? 'min' : 'full');
+    }
+  });
+
+  // Relógio do topo, no fuso da loja.
+  var relogio = document.querySelector('[data-relogio]');
+  if (relogio) {
+    var formato = new Intl.DateTimeFormat('pt-BR', { timeZone: relogio.dataset.fuso, dateStyle: 'full', timeStyle: 'medium' });
+    setInterval(function () {
+      relogio.textContent = formato.format(new Date());
+    }, 1000);
+  }
+
   // Menu de mais ações: fecha ao clicar fora ou com Esc.
   document.addEventListener('click', function (e) {
     document.querySelectorAll('details.menu[open]').forEach(function (d) {

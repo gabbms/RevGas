@@ -151,8 +151,6 @@ export function registerOrderRoutes(scope: FastifyInstance, deps: PanelDeps): vo
     return isStatus(v) ? v : null;
   };
 
-  scope.get('/painel', async (_req, reply) => reply.redirect('/painel/pedidos'));
-
   scope.get('/painel/pedidos', async (req, reply) => {
     const filtro = filtroDe(req.query);
     const erro = (req.query as { erro?: unknown } | undefined)?.erro;

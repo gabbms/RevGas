@@ -16,6 +16,8 @@ import type { StoreSettings } from '../store/settings.js';
 import type { createOutbox } from '../whatsapp/outbox.js';
 import { storeStatus } from './format.js';
 import { ICONS, MARCA } from './icons.js';
+import { resumoBot } from './central-data.js';
+import { registerCentralRoutes } from './routes-central.js';
 import { registerConfigRoutes } from './routes-config.js';
 import { registerConversationRoutes } from './routes-conversations.js';
 import { registerCustomerRoutes } from './routes-customers.js';
@@ -40,6 +42,7 @@ const THIRTY_DAYS = 30 * 24 * 60 * 60;
 
 /** Telas do painel, na ordem da navegação. `curto` é o rótulo da barra de baixo no celular. */
 export const NAV = [
+  { id: 'central', label: 'Central', curto: 'Central', href: '/painel' },
   { id: 'pedidos', label: 'Pedidos', curto: 'Pedidos', href: '/painel/pedidos' },
   { id: 'conversas', label: 'Conversas', curto: 'Conversas', href: '/painel/conversas' },
   { id: 'alertas', label: 'Alertas', curto: 'Alertas', href: '/painel/alertas' },
@@ -109,7 +112,14 @@ export function renderPage(
       icons: ICONS,
       marca: MARCA,
       contagens,
-      loja: { nome: s.nomeLoja, status: storeStatus(s, agora), horarios: formatHorarios(s) },
+      bot: resumoBot(deps),
+      loja: {
+        nome: s.nomeLoja,
+        status: storeStatus(s, agora),
+        horarios: formatHorarios(s),
+        fuso: s.fuso,
+        agora: new Intl.DateTimeFormat('pt-BR', { timeZone: s.fuso, dateStyle: 'full', timeStyle: 'medium' }).format(agora),
+      },
     },
     { layout: 'layout.eta' },
   );
@@ -128,7 +138,7 @@ export async function registerPanel(app: FastifyInstance, deps: PanelDeps): Prom
   await app.register(fastifyStatic, { root: PUBLIC_DIR, prefix: '/static/' });
 
   app.get('/login', async (req, reply) => {
-    if (hasSession(req)) return reply.redirect('/painel/pedidos');
+    if (hasSession(req)) return reply.redirect('/painel');
     return reply.type('text/html; charset=utf-8').view('login.eta', loginData(null));
   });
 
@@ -154,7 +164,7 @@ export async function registerPanel(app: FastifyInstance, deps: PanelDeps): Prom
       signed: true,
       maxAge: THIRTY_DAYS,
     });
-    return reply.redirect('/painel/pedidos');
+    return reply.redirect('/painel');
   });
 
   app.post('/logout', async (_req, reply) => {
@@ -172,6 +182,7 @@ export async function registerPanel(app: FastifyInstance, deps: PanelDeps): Prom
       }
       return reply.redirect('/login');
     });
+    registerCentralRoutes(scope, deps);
     registerOrderRoutes(scope, deps);
     registerCustomerRoutes(scope, deps);
     registerConversationRoutes(scope, deps);

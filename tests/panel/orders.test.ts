@@ -60,7 +60,7 @@ describe('painel: login', () => {
     await orders.create(cliente.id, pedidoPadrao);
     const res = await app.inject({ method: 'POST', url: '/login', ...form('', { senha: 'senha-do-dono' }) });
     expect(res.statusCode).toBe(302);
-    expect(res.headers.location).toBe('/painel/pedidos');
+    expect(res.headers.location).toBe('/painel');
     const c = res.cookies.find((x) => x.name === 'sessao')!;
     expect(c).toMatchObject({ httpOnly: true, sameSite: 'Lax', secure: true });
     expect(c.maxAge).toBe(30 * 86400);
@@ -86,12 +86,12 @@ describe('painel: login', () => {
     expect(res.cookies.find((c) => c.name === 'sessao')?.value).toBe('');
   });
 
-  test('GET /login com sessão vai direto aos pedidos', async () => {
+  test('GET /login com sessão vai direto à Central', async () => {
     const { app } = await setupPanel();
     const cookie = await login(app);
     const res = await app.inject({ method: 'GET', url: '/login', headers: { cookie } });
     expect(res.statusCode).toBe(302);
-    expect(res.headers.location).toBe('/painel/pedidos');
+    expect(res.headers.location).toBe('/painel');
   });
 });
 
