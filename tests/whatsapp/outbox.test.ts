@@ -12,6 +12,30 @@ function setup() {
 }
 
 describe('outbox', () => {
+  const abertos = () => {
+    const fake = new FakeWhatsApp();
+    return { fake, ob: createOutbox(openDb(':memory:'), fake, () => now, { semJanela: true }) };
+  };
+
+  test('opções vão como menu', async () => {
+    const { fake, ob } = abertos();
+    expect(await ob.send({ telefone: '5586999991234', texto: 'Paga como?', opcoes: ['Dinheiro', 'Cartão'] })).toMatchObject({ ok: true, via: 'opcoes' });
+    expect(fake.sent).toEqual([{ to: '5586999991234', kind: 'choices', body: 'Paga como?', opcoes: ['Dinheiro', 'Cartão'] }]);
+  });
+
+  test('menu que falha sai numerado no texto: o atendimento não para', async () => {
+    const { fake, ob } = abertos();
+    fake.failNext(new WhatsAppApiError(501, 'não implementado'));
+    expect(await ob.send({ telefone: '5586999991234', texto: 'Paga como?', opcoes: ['Dinheiro', 'Cartão'] })).toMatchObject({ ok: true, via: 'texto' });
+    expect(fake.sent).toEqual([{ to: '5586999991234', kind: 'text', body: 'Paga como?\n\n1. Dinheiro\n2. Cartão' }]);
+  });
+
+  test('texto longo demais para o menu também sai numerado', async () => {
+    const { fake, ob } = abertos();
+    await ob.send({ telefone: '5586999991234', texto: 'x'.repeat(1025), opcoes: ['A', 'B'] });
+    expect(fake.sent[0]).toMatchObject({ kind: 'text' });
+  });
+
   test('semJanela (WAHA): manda texto livre mesmo sem janela aberta e ignora o modelo', async () => {
     const fake = new FakeWhatsApp();
     const ob = createOutbox(openDb(':memory:'), fake, () => now, { semJanela: true });

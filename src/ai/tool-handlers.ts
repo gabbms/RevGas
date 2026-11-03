@@ -29,6 +29,8 @@ export interface ToolContext {
   clock: () => Date;
   /** Quando chegou a última mensagem do cliente: um rascunho feito depois dela ainda não foi visto por ele. */
   ultimaMensagemClienteEm: Date;
+  /** Mensagem com opções deste turno: é ela que vai ao cliente, no lugar do texto final do modelo. */
+  turno?: { escolha: { mensagem: string; opcoes: string[] } | null };
 }
 
 export const PAYMENT_LABELS: Record<PaymentMethod, string> = {
@@ -80,31 +82,35 @@ interface SummaryInput {
   agendadoPara?: string;
 }
 
-function buildSummary(s: StoreSettings, i: SummaryInput): string[] {
+/** Resumo pronto para o WhatsApp (`*negrito*` e emojis): o modelo copia o texto, sem reescrever. */
+function buildSummary(s: StoreSettings, i: SummaryInput): string {
   const q = i.quantidade;
   const botijoes = `${q} ${q === 1 ? 'botijão' : 'botijões'} P13`;
-  const lines: string[] = [];
+
+  const itens: string[] = [];
   if (i.pagamento === 'gas_do_povo') {
-    lines.push(`${botijoes} – recarga pelo Gás do Povo${i.modo === 'completo' ? ' (sem vazio para trocar)' : ' (troca do vazio)'}`);
+    itens.push(`🛢️ ${botijoes} – recarga pelo Gás do Povo${i.modo === 'completo' ? ' (sem vazio para trocar)' : ' (troca do vazio)'}`);
   } else {
     const modo = i.modo === 'troca' ? 'troca (com o vazio)' : 'completo (botijão novo com gás)';
-    lines.push(`${botijoes} – ${modo} – ${formatBRL(i.quote.unitarioCentavos)} cada`);
+    itens.push(`🛢️ ${botijoes} – ${modo}`, `🏷️ ${formatBRL(i.quote.unitarioCentavos)} cada`);
   }
-  if (i.quote.cascoCentavos > 0) lines.push(`Casco: ${formatBRL(i.quote.cascoCentavos)} cada`);
-  if (i.quote.taxaEntregaCentavos > 0) lines.push(`Taxa de entrega: ${formatBRL(i.quote.taxaEntregaCentavos)}`);
-  lines.push(`Total: ${formatBRL(i.quote.totalCentavos)}`);
+  if (i.quote.cascoCentavos > 0) itens.push(`🔩 Casco: ${formatBRL(i.quote.cascoCentavos)} cada`);
+  if (i.quote.taxaEntregaCentavos > 0) itens.push(`🚚 Taxa de entrega: ${formatBRL(i.quote.taxaEntregaCentavos)}`);
+
+  const entrega: string[] = [];
   if (i.tipo === 'retirada') {
-    lines.push(s.enderecoLoja.trim() ? `Retirada na loja: ${s.enderecoLoja.trim()}` : 'Retirada na loja');
+    entrega.push(s.enderecoLoja.trim() ? `🏪 *Retirada na loja:* ${s.enderecoLoja.trim()}` : '🏪 *Retirada na loja*');
   } else if (i.endereco) {
-    lines.push(`Endereço: ${formatAddress(i.endereco)}`);
+    entrega.push(`📍 *Entrega:* ${formatAddress(i.endereco)}`);
   }
-  lines.push(`Pagamento: ${PAYMENT_LABELS[i.pagamento]}`);
+  entrega.push(`💳 *Pagamento:* ${PAYMENT_LABELS[i.pagamento]}`);
   if (i.pagamento === 'dinheiro') {
-    lines.push(i.trocoParaCentavos != null ? `Troco para ${formatBRL(i.trocoParaCentavos)}` : 'Sem troco');
+    entrega.push(i.trocoParaCentavos != null ? `💵 Troco para ${formatBRL(i.trocoParaCentavos)}` : '💵 Sem troco');
   }
-  if (i.pagamento === 'pix_antecipado' && s.chavePix) lines.push(`Chave Pix: ${s.chavePix}`);
-  if (i.agendadoPara) lines.push(`Agendado para quando a loja abrir (${i.agendadoPara})`);
-  return lines;
+  if (i.pagamento === 'pix_antecipado' && s.chavePix) entrega.push(`🔑 *Chave Pix:* ${s.chavePix}`);
+  if (i.agendadoPara) entrega.push(`🕐 Agendado para quando a loja abrir (${i.agendadoPara})`);
+
+  return ['🧾 *Resumo do pedido*', itens.join('\n'), entrega.join('\n'), `💰 *Total: ${formatBRL(i.quote.totalCentavos)}*`].join('\n\n');
 }
 
 const orderQuote = (o: Order): Quote => ({
@@ -130,7 +136,7 @@ export type PrepararResult =
       tipo: OrderKind;
       agendado: boolean;
       proximaAbertura?: string;
-      resumo: string[];
+      resumo: string;
       total: string;
     }
   | { erros: string[] };
@@ -142,7 +148,7 @@ export type ConfirmarResult =
   | { erros: string[] };
 
 export type AlterarResult =
-  | { ok: true; resumo: string[] }
+  | { ok: true; resumo: string }
   | { ok: false; erros: string[] }
   | { ok: false; motivo: 'ja_saiu' | 'finalizado' }
   | { ok: false; erro: string };
@@ -328,6 +334,11 @@ export function createToolHandlers(ctx: ToolContext) {
     return ctx.orders.cancel(i.numero, 'cliente');
   }
 
+  async function mostrarOpcoes(i: { mensagem: string; opcoes: string[] }): Promise<{ ok: true; instrucao: string }> {
+    if (ctx.turno) ctx.turno.escolha = { mensagem: i.mensagem.trim(), opcoes: [...new Set(i.opcoes.map((o) => o.trim()))] };
+    return { ok: true, instrucao: 'Mensagem e opções prontas para envio. Não escreva mais nada neste turno.' };
+  }
+
   async function alertarDono(i: { motivo: string; resumo: string }): Promise<{ ok: true }> {
     await ctx.alerts.create({ clienteId, motivo: i.motivo, resumo: i.resumo });
     return { ok: true };
@@ -346,6 +357,7 @@ export function createToolHandlers(ctx: ToolContext) {
     confirmarPedido,
     alterarPedido,
     cancelarPedido,
+    mostrarOpcoes,
     alertarDono,
     desativarLembretes,
   };

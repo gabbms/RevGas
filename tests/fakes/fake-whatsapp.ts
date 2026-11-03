@@ -2,6 +2,7 @@ import type { WhatsAppApi } from '../../src/whatsapp/api.js';
 
 export type SentMessage =
   | { to: string; kind: 'text'; body: string }
+  | { to: string; kind: 'choices'; body: string; opcoes: string[] }
   | { to: string; kind: 'template'; name: string; params: string[] }
   | { to: string; kind: 'image' | 'document'; mediaId: string; caption?: string };
 
@@ -31,6 +32,12 @@ export class FakeWhatsApp implements WhatsAppApi {
   async sendText(to: string, body: string) {
     const wamid = this.step();
     this.sent.push({ to, kind: 'text', body });
+    return { wamid };
+  }
+
+  async sendChoices(to: string, body: string, opcoes: string[]) {
+    const wamid = this.step();
+    this.sent.push({ to, kind: 'choices', body, opcoes });
     return { wamid };
   }
 

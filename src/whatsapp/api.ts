@@ -1,10 +1,22 @@
 export interface WhatsAppApi {
   sendText(to: string, body: string): Promise<{ wamid: string }>;
   sendTemplate(to: string, name: string, params: string[]): Promise<{ wamid: string }>;
+  /** Pergunta com opções para tocar (menu "Clica aqui" ou botões). A resposta chega como texto com o título da opção. */
+  sendChoices(to: string, texto: string, opcoes: string[]): Promise<{ wamid: string }>;
   sendMedia(to: string, kind: 'image' | 'document', mediaId: string, caption?: string): Promise<{ wamid: string }>;
   uploadMedia(data: Buffer, mime: string): Promise<string>;
   downloadMedia(mediaId: string): Promise<{ data: Buffer; mime: string }>;
 }
+
+/** Rótulo do botão que abre o menu de opções. */
+export const BOTAO_OPCOES = 'Clica aqui';
+/** O WhatsApp corta o título de uma opção de lista depois disso. */
+export const MAX_TITULO_OPCAO = 24;
+export const MAX_OPCOES = 10;
+/** Limite da Meta para o texto de uma mensagem com opções. */
+export const MAX_TEXTO_OPCOES = 1024;
+const MAX_BOTOES = 3;
+const MAX_TITULO_BOTAO = 20;
 
 export class WhatsAppApiError extends Error {
   constructor(readonly status: number, readonly body: string) {
@@ -61,6 +73,27 @@ export function createWhatsAppApi(o: {
             : {}),
         },
       }),
+
+    sendChoices: (to, texto, opcoes) => {
+      const body = { text: texto };
+      // Botões são mais diretos, mas a Meta só aceita até 3, com títulos curtos; fora disso, lista.
+      const botoes = opcoes.length <= MAX_BOTOES && opcoes.every((t) => t.length <= MAX_TITULO_BOTAO);
+      const interactive = botoes
+        ? {
+            type: 'button',
+            body,
+            action: { buttons: opcoes.map((title, i) => ({ type: 'reply', reply: { id: `opcao_${i + 1}`, title } })) },
+          }
+        : {
+            type: 'list',
+            body,
+            action: {
+              button: BOTAO_OPCOES,
+              sections: [{ title: 'Opções', rows: opcoes.map((title, i) => ({ id: `opcao_${i + 1}`, title })) }],
+            },
+          };
+      return postMessage({ to, type: 'interactive', interactive });
+    },
 
     sendMedia: (to, kind, mediaId, caption) =>
       postMessage({ to, type: kind, [kind]: { id: mediaId, ...(caption !== undefined ? { caption } : {}) } }),

@@ -10,7 +10,8 @@ services:
       # Só o seu computador acessa (127.0.0.1). Nunca exponha esta porta na internet.
       - "127.0.0.1:3001:3000"
     environment:
-      WHATSAPP_DEFAULT_ENGINE: WEBJS
+      # GOWS porque é o engine que envia lista ("Clica aqui"); no WEBJS, sendList responde 501.
+      WHATSAPP_DEFAULT_ENGINE: GOWS
       WHATSAPP_START_SESSION: default
       WAHA_API_KEY: ${WAHA_API_KEY:?defina WAHA_API_KEY no .env}
       WAHA_DASHBOARD_USERNAME: admin

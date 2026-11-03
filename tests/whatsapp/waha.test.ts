@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { createWahaApi, createWahaLidResolver, parseWahaWebhook, verifyWahaSecret } from '../../src/whatsapp/waha.js';
+import { createWahaApi, createWahaLidResolver, parseWahaWebhook, tituloEDescricao, verifyWahaSecret } from '../../src/whatsapp/waha.js';
 import { WhatsAppApiError } from '../../src/whatsapp/api.js';
 
 type Call = { url: string; init: RequestInit };
@@ -60,6 +60,30 @@ describe('createWahaApi', () => {
   test('erro HTTP vira WhatsAppApiError', async () => {
     const { api } = setup([existe(), json({ message: 'sessão parada' }, 422)]);
     await expect(api.sendText('558694264580', 'oi')).rejects.toBeInstanceOf(WhatsAppApiError);
+  });
+
+  test('opções viram a lista do WAHA, com o botão "Clica aqui"', async () => {
+    const { api, calls } = setup([existe(), json({ id: 'l1' })]);
+    expect(await api.sendChoices('558694264580', 'Paga como?', ['Dinheiro', 'Cartão'])).toEqual({ wamid: 'l1' });
+    expect(calls[1]!.url).toBe('http://localhost:3001/api/sendList');
+    expect(body(calls[1]!)).toEqual({
+      session: 'default',
+      chatId: '558694264580@c.us',
+      message: {
+        title: 'Paga como?',
+        description: 'Toque no botão abaixo para escolher.',
+        button: 'Clica aqui',
+        sections: [
+          {
+            title: 'Opções',
+            rows: [
+              { title: 'Dinheiro', rowId: 'opcao_1', description: null },
+              { title: 'Cartão', rowId: 'opcao_2', description: null },
+            ],
+          },
+        ],
+      },
+    });
   });
 
   test('modelo de mensagem não existe no WAHA', async () => {
@@ -126,6 +150,11 @@ describe('parseWahaWebhook', () => {
     ]);
   });
 
+  test('GOWS: nome do perfil vem em Info.PushName, e a escolha da lista chega como texto', () => {
+    const r = parseWahaWebhook(msg({ body: 'Dinheiro', _data: { Info: { PushName: 'Gabriel' } }, replyTo: { id: 'l1' } }));
+    expect(r.events[0]).toMatchObject({ nomePerfil: 'Gabriel', respostaA: 'l1', conteudo: { tipo: 'texto', texto: 'Dinheiro' } });
+  });
+
   test('áudio, imagem com legenda e documento', () => {
     const m = (mimetype: string, body = '') =>
       parseWahaWebhook(msg({ hasMedia: true, body, media: { url: 'http://x/api/files/a', mimetype } })).events[0]!.conteudo;
@@ -156,6 +185,24 @@ describe('parseWahaWebhook', () => {
         evento: { wamid: 'false_558694264580@c.us_AAA', nomePerfil: 'Gabriel', em: new Date(1793404800_000), conteudo: { tipo: 'texto', texto: 'oi' } },
       },
     ]);
+  });
+});
+
+describe('tituloEDescricao', () => {
+  test('resumo: o título perde os asteriscos e o corpo continua com a formatação', () => {
+    expect(tituloEDescricao('🧾 *Resumo do pedido*\n\n💰 *Total: R$ 120,00*\n\nPosso confirmar?')).toEqual({
+      title: '🧾 Resumo do pedido',
+      description: '💰 *Total: R$ 120,00*\n\nPosso confirmar?',
+    });
+  });
+
+  test('uma linha só vira título, e o corpo nunca fica vazio', () => {
+    expect(tituloEDescricao('Como prefere pagar?')).toEqual({ title: 'Como prefere pagar?', description: 'Toque no botão abaixo para escolher.' });
+  });
+
+  test('primeira linha longa fica no corpo, com título genérico', () => {
+    const longa = 'x'.repeat(61);
+    expect(tituloEDescricao(longa)).toEqual({ title: 'Escolha uma opção', description: longa });
   });
 });
 

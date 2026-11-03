@@ -84,8 +84,10 @@ function describeError(err: unknown): string {
   return parts.join(' ');
 }
 
+export type AgentReply = { texto: string; opcoes?: string[] };
+
 export interface Agent {
-  reply(clienteId: number): Promise<string | null>;
+  reply(clienteId: number): Promise<AgentReply | null>;
 }
 
 export function createAgent(d: {
@@ -96,14 +98,16 @@ export function createAgent(d: {
   makeContext(clienteId: number): ToolContext;
   clock: () => Date;
 }): Agent {
-  async function reply(clienteId: number): Promise<string | null> {
+  async function reply(clienteId: number): Promise<AgentReply | null> {
     const messages = historyFor(d.db, clienteId, d.clock());
     if (messages.length === 0) return null;
 
     // Lido no começo do turno: um resumo enviado depois disso o cliente ainda não viu.
+    const turno: NonNullable<ToolContext['turno']> = { escolha: null };
     const ctx: ToolContext = {
       ...d.makeContext(clienteId),
       ultimaMensagemClienteEm: lastCustomerMessageAt(d.db, clienteId) ?? new Date(0),
+      turno,
     };
     const nota = openDraftNote(d.db, clienteId, ctx.ultimaMensagemClienteEm);
     const final = await d.client.beta.messages.toolRunner({
@@ -118,7 +122,10 @@ export function createAgent(d: {
       // Sem thread no servidor: a conversa não fica guardada na Anthropic entre turnos (LGPD).
       thread: false,
     });
-    return extractReply(final);
+    // Depois de mostrar_opcoes o modelo costuma terminar sem texto: a mensagem do turno é a que foi à ferramenta.
+    if (turno.escolha) return { texto: turno.escolha.mensagem, opcoes: turno.escolha.opcoes };
+    const texto = extractReply(final);
+    return texto === null ? null : { texto };
   }
 
   return { reply };
@@ -152,14 +159,16 @@ export function createCustomerTurnHandler(d: {
   }
 
   /** Envia ao cliente e grava como fala do bot; devolve se saiu. */
-  async function deliver(clienteId: number, telefone: string, texto: string, isAgentReply: boolean): Promise<boolean> {
-    const r = await d.outbox.send({ telefone, texto });
+  async function deliver(clienteId: number, telefone: string, texto: string, isAgentReply: boolean, opcoes?: string[]): Promise<boolean> {
+    const r = await d.outbox.send({ telefone, texto, ...(opcoes ? { opcoes } : {}) });
     if (!r.ok) {
       console.error('agente: falha ao enviar resposta', clienteId, r.motivo, r.detalhe ?? '');
       return false;
     }
     const now = d.clock();
-    insertMessage(d.db, { clienteId, autor: 'bot', tipo: 'texto', texto, wamid: r.wamid, criadoEm: now.toISOString() });
+    // As opções entram no histórico: é assim que o modelo entende um "2" ou o título que o cliente tocou.
+    const gravado = opcoes ? `${texto}\n\nOpções: ${opcoes.join(' · ')}` : texto;
+    insertMessage(d.db, { clienteId, autor: 'bot', tipo: 'texto', texto: gravado, wamid: r.wamid, criadoEm: now.toISOString() });
     // Só depois de a resposta sair o cliente viu o resumo; sem isso nenhum rascunho pode ser confirmado.
     // E só conta como visto se a resposta repetiu o total do resumo mais recente.
     if (isAgentReply && showsLatestDraftTotal(clienteId, texto)) markDraftsPresented(d.db, clienteId, now);
@@ -171,7 +180,7 @@ export function createCustomerTurnHandler(d: {
     if (paused(clienteId)) return;
     if (historyFor(d.db, clienteId, d.clock()).length === 0) return;
 
-    let reply: string | null = null;
+    let reply: AgentReply | null = null;
     try {
       reply = await d.agent.reply(clienteId);
     } catch (err) {
@@ -182,7 +191,7 @@ export function createCustomerTurnHandler(d: {
     const telefone = getCustomer(d.db, clienteId)!.telefone;
 
     if (reply !== null) {
-      if (await deliver(clienteId, telefone, reply, true)) return;
+      if (await deliver(clienteId, telefone, reply.texto, true, reply.opcoes)) return;
       await alertOnce(clienteId, 'A resposta do bot não pôde ser enviada ao cliente.');
       return;
     }

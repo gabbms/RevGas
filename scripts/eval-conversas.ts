@@ -10,12 +10,19 @@ import { listOpenAlerts } from '../src/store/alerts.js';
 import { updateCustomer, upsertCustomerByPhone } from '../src/store/customers.js';
 import { insertOrder, listOrdersByCustomer } from '../src/store/orders.js';
 import { DEFAULT_SETTINGS, updateSettings, type StoreSettings } from '../src/store/settings.js';
-import { FakeWhatsApp } from '../tests/fakes/fake-whatsapp.js';
+import { FakeWhatsApp, type SentMessage } from '../tests/fakes/fake-whatsapp.js';
 
 const SEGUNDA_10H = new Date('2026-11-02T13:00:00Z');
 const PRECO = 11500;
 const DONO = '5586999990000';
 const ENDERECO = { rua: 'Rua das Flores', numero: '120', bairro: 'Centro' };
+
+/** Texto que o cliente vê; o menu aparece como "[Clica aqui: A | B]". */
+function textoDe(m: SentMessage): string[] {
+  if (m.kind === 'text') return [m.body];
+  if (m.kind === 'choices') return [`${m.body}\n[Clica aqui: ${m.opcoes.join(' | ')}]`];
+  return [];
+}
 
 if (!process.env.ANTHROPIC_API_KEY) {
   console.error('Defina ANTHROPIC_API_KEY para rodar o roteiro.');
@@ -76,13 +83,13 @@ async function setup(phone: string, settings: Partial<StoreSettings>): Promise<S
     clienteId: cliente.id,
     modelInputs,
     clock,
-    replies: () => fake.sent.flatMap((m) => (m.to === phone && m.kind === 'text' ? [m.body] : [])),
+    replies: () => fake.sent.flatMap((m) => (m.to === phone ? textoDe(m) : [])),
     async say(text) {
       clock.now = new Date(clock.now.getTime() + 20_000);
       const before = fake.sent.length;
       await ctx.router.handle([{ wamid: `wamid.eval.${phone}.${++n}`, de: phone, nomePerfil: undefined, em: clock.now, conteudo: { tipo: 'texto', texto: text } } as never]);
       await ctx.router.idle();
-      const novos = fake.sent.slice(before).flatMap((m) => (m.to === phone && m.kind === 'text' ? [m.body] : []));
+      const novos = fake.sent.slice(before).flatMap((m) => (m.to === phone ? textoDe(m) : []));
       return novos.at(-1);
     },
   };

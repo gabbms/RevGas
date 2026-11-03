@@ -48,7 +48,8 @@ function parseContent(m: Obj): InboundContent {
       return texto === undefined ? { tipo: 'outro' } : { tipo: 'botao', texto };
     }
     case 'interactive': {
-      const reply = isObj(m.interactive) && isObj(m.interactive.button_reply) ? m.interactive.button_reply : undefined;
+      const inter = isObj(m.interactive) ? m.interactive : undefined;
+      const reply = inter && (isObj(inter.button_reply) ? inter.button_reply : isObj(inter.list_reply) ? inter.list_reply : undefined);
       const texto = reply ? str(reply.title) : undefined;
       return texto === undefined ? { tipo: 'outro' } : { tipo: 'botao', texto };
     }

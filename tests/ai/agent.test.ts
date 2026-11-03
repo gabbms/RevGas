@@ -114,6 +114,20 @@ describe('buildHistory', () => {
   });
 });
 
+describe('mostrar_opcoes', () => {
+  test('o que a ferramenta recebeu sai junto com a resposta do agente', async () => {
+    const s = setup();
+    s.say('cliente', 'quero um gás');
+    const { client } = fakeClient(async (p) => {
+      const tools = p.tools as { name: string; run(i: unknown): Promise<unknown> }[];
+      await tools.find((t) => t.name === 'mostrar_opcoes')!.run({ mensagem: ' Como prefere pagar? ', opcoes: [' Dinheiro ', 'Cartão', 'Cartão'] });
+      return message([]); // o modelo termina sem texto depois da ferramenta
+    });
+    const agent = createAgent({ client, model: 'm', effort: 'low', db: s.db, makeContext: s.makeContext, clock: s.clock });
+    expect(await agent.reply(s.cliente.id)).toEqual({ texto: 'Como prefere pagar?', opcoes: ['Dinheiro', 'Cartão'] });
+  });
+});
+
 describe('openDraftNote', () => {
   const pedido = { quantidade: 1, modo: 'troca', pagamento: 'cartao', endereco: { rua: 'Rua A', numero: '1', bairro: 'Centro' } } as const;
   const DEPOIS = new Date('2026-11-02T13:00:30Z');
@@ -228,7 +242,7 @@ describe('createAgent', () => {
     const { client, toolRunner } = fakeClient(async () => textMsg('Claro! É o de sempre?'));
     const agent = createAgent({ client, model: 'modelo-injetado', effort: 'high', db: s.db, makeContext: s.makeContext, clock: s.clock });
 
-    expect(await agent.reply(s.cliente.id)).toBe('Claro! É o de sempre?');
+    expect(await agent.reply(s.cliente.id)).toEqual({ texto: 'Claro! É o de sempre?' });
     expect(toolRunner).toHaveBeenCalledTimes(1);
     const p = toolRunner.mock.calls[0]![0] as Record<string, unknown> & { tools: { name: string }[] };
     expect(p.model).toBe('modelo-injetado');
@@ -250,6 +264,7 @@ describe('createAgent', () => {
         'confirmar_pedido',
         'alterar_pedido',
         'cancelar_pedido',
+        'mostrar_opcoes',
         'alertar_dono',
         'desativar_lembretes',
       ].sort(),
@@ -283,8 +298,22 @@ describe('createAgent', () => {
 
 describe('createCustomerTurnHandler', () => {
   function agentOf(fn: () => Promise<string | null>): Agent & { reply: ReturnType<typeof vi.fn> } {
-    return { reply: vi.fn(fn) };
+    return {
+      reply: vi.fn(async () => {
+        const texto = await fn();
+        return texto === null ? null : { texto };
+      }),
+    };
   }
+
+  test('resposta com opções vai como menu e as opções entram no histórico', async () => {
+    const s = setup();
+    s.say('cliente', 'quero um gás');
+    const agent: Agent = { reply: async () => ({ texto: 'Como prefere pagar?', opcoes: ['Dinheiro', 'Cartão'] }) };
+    await createCustomerTurnHandler({ db: s.db, agent, outbox: s.outbox, alerts: s.alerts, clock: s.clock })(s.cliente.id);
+    expect(s.fake.sent).toEqual([{ to: CLIENTE, kind: 'choices', body: 'Como prefere pagar?', opcoes: ['Dinheiro', 'Cartão'] }]);
+    expect(recentMessages(s.db, s.cliente.id, new Date(0)).at(-1)?.texto).toBe('Como prefere pagar?\n\nOpções: Dinheiro · Cartão');
+  });
 
   test('envia a resposta, grava como bot e marca o resumo como apresentado', async () => {
     const s = setup();

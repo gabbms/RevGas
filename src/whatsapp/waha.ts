@@ -1,5 +1,5 @@
 import { createHash, timingSafeEqual } from 'node:crypto';
-import { WhatsAppApiError, type WhatsAppApi } from './api.js';
+import { BOTAO_OPCOES, WhatsAppApiError, type WhatsAppApi } from './api.js';
 import type { InboundContent, InboundEvent } from './webhook.js';
 
 // WAHA (https://waha.devlike.pro) liga um número de WhatsApp comum, lido por QR code. Não é a API
@@ -11,6 +11,18 @@ const isObj = (v: unknown): v is Obj => typeof v === 'object' && v !== null && !
 const str = (v: unknown): string | undefined => (typeof v === 'string' ? v : undefined);
 
 const MAX_UPLOADS_EM_MEMORIA = 20;
+const MAX_TITULO_LISTA = 60;
+
+/**
+ * O WAHA recusa lista sem título, e o título já sai em negrito. A primeira linha vira o título (sem os asteriscos,
+ * que apareceriam na tela) e o resto vira o corpo. Primeira linha longa demais fica no corpo, com título genérico.
+ */
+export function tituloEDescricao(texto: string): { title: string; description: string } {
+  const [primeira = '', ...resto] = texto.trim().split('\n');
+  const title = primeira.replace(/\*/g, '').trim();
+  if (title === '' || title.length > MAX_TITULO_LISTA) return { title: 'Escolha uma opção', description: texto.trim() };
+  return { title, description: resto.join('\n').trim() || 'Toque no botão abaixo para escolher.' };
+}
 
 export function createWahaApi(o: { baseUrl: string; apiKey?: string; session: string; fetch?: typeof fetch }): WhatsAppApi {
   const doFetch = o.fetch ?? fetch;
@@ -55,6 +67,18 @@ export function createWahaApi(o: { baseUrl: string; apiKey?: string; session: st
   return {
     async sendText(to, body) {
       return post('/api/sendText', { chatId: await chatId(to), text: body });
+    },
+
+    // Lista precisa do engine GOWS (ou NOWEB): no WEBJS o WAHA responde 501 e o outbox manda as opções em texto.
+    async sendChoices(to, texto, opcoes) {
+      return post('/api/sendList', {
+        chatId: await chatId(to),
+        message: {
+          ...tituloEDescricao(texto),
+          button: BOTAO_OPCOES,
+          sections: [{ title: 'Opções', rows: opcoes.map((title, i) => ({ title, rowId: `opcao_${i + 1}`, description: null })) }],
+        },
+      });
     },
 
     async sendTemplate() {
@@ -174,7 +198,9 @@ export function parseWahaWebhook(body: unknown): { events: InboundEvent[]; lids:
   const de = ehLid ? '' : from.slice(0, -'@c.us'.length).replace(/\D/g, '');
   if (!ehLid && de === '') return vazio;
   const data = isObj(p._data) ? p._data : undefined;
-  const nomePerfil = data ? str(data.notifyName) : undefined;
+  // O nome do perfil muda de lugar conforme o engine: WEBJS usa notifyName; GOWS, Info.PushName.
+  const info = data && isObj(data.Info) ? data.Info : undefined;
+  const nomePerfil = (data ? str(data.notifyName) : undefined) || (info ? str(info.PushName) : undefined);
   const respostaA = isObj(p.replyTo) ? str(p.replyTo.id) : undefined;
   const evento = {
     wamid,

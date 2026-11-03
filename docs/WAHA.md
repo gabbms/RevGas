@@ -14,6 +14,8 @@ O bot escolhe o canal pela variável `WA_PROVIDER`. Para voltar à Meta, basta t
 
 Com o WAHA não existem a janela de 24 horas nem os modelos de mensagem (`WA_TPL_*`). O bot manda texto livre a qualquer hora.
 
+O compose usa o engine **GOWS**, porque é ele que envia o menu "Clica aqui" (lista). Botões Sim/Não não existem no WAHA: nesses casos o bot também usa o menu. Se a lista falhar, as opções saem numeradas no texto. Trocar de engine exige escanear o QR de novo.
+
 ## O que você precisa
 
 - Docker Desktop instalado e aberto (ícone da baleia ativo).

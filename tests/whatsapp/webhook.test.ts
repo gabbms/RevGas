@@ -67,4 +67,23 @@ describe('verifySignature', () => {
     expect(verifySignature(body, 'sha256=abc', 's')).toBe(false);
     expect(verifySignature(body, sign(body, 's').slice(7), 's')).toBe(false);
   });
+
+  test('escolha em lista interativa da Meta chega como botão com o título da opção', () => {
+    const ev = parseWebhook({
+      entry: [
+        {
+          changes: [
+            {
+              value: {
+                messages: [
+                  { id: 'w1', from: '5586999991234', timestamp: '1793404800', type: 'interactive', interactive: { type: 'list_reply', list_reply: { id: 'opcao_1', title: 'Dinheiro' } } },
+                ],
+              },
+            },
+          ],
+        },
+      ],
+    });
+    expect(ev[0]!.conteudo).toEqual({ tipo: 'botao', texto: 'Dinheiro' });
+  });
 });

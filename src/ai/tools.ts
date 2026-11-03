@@ -1,6 +1,7 @@
 import { betaZodTool } from '@anthropic-ai/sdk/helpers/beta/zod';
 import type { BetaRunnableTool } from '@anthropic-ai/sdk/lib/tools/BetaRunnableTool.js';
 import { z } from 'zod';
+import { MAX_OPCOES, MAX_TITULO_OPCAO } from '../whatsapp/api.js';
 import { createToolHandlers, type ToolContext } from './tool-handlers.js';
 
 const AddressSchema = z
@@ -98,6 +99,20 @@ export function buildTools(ctx: ToolContext): BetaRunnableTool[] {
         'Cancela um pedido do cliente. Só chame quando o cliente pedir claramente para cancelar. Se vier motivo "ja_saiu", avise que o pedido já saiu e que o dono foi avisado.',
       inputSchema: z.object({ numero: numeroPedido }),
       run: async (i) => json(await h.cancelarPedido(i)),
+    }),
+    betaZodTool({
+      name: 'mostrar_opcoes',
+      description:
+        'Envia ao cliente a sua mensagem com um menu de opções para tocar. Use quando a pergunta tiver respostas fechadas. A mensagem inteira do turno vai aqui: não escreva outro texto, nem antes nem depois, e não liste as opções na mensagem.',
+      inputSchema: z.object({
+        mensagem: z.string().min(1).describe('Tudo o que o cliente deve ler neste turno, inclusive o resumo do pedido, se houver.'),
+        opcoes: z
+          .array(z.string().min(1).max(MAX_TITULO_OPCAO))
+          .min(2)
+          .max(MAX_OPCOES)
+          .describe(`De 2 a ${MAX_OPCOES} opções curtas, com até ${MAX_TITULO_OPCAO} letras cada.`),
+      }),
+      run: async (i) => json(await h.mostrarOpcoes(i)),
     }),
     betaZodTool({
       name: 'alertar_dono',

@@ -328,7 +328,7 @@ describe('confirmarPedido', () => {
     });
     expect(r).toMatchObject({
       erro: 'condicoes_mudaram',
-      novoRascunho: { resumo: expect.arrayContaining(['Chave Pix: outra-chave@loja']) },
+      novoRascunho: { resumo: expect.stringContaining('*Chave Pix:* outra-chave@loja') },
     });
     expect(getOrder(s.db, 1)).toBeNull();
   });
@@ -367,7 +367,7 @@ describe('prepararPedido', () => {
     updateCustomer(s.db, s.cliente.id, { endereco: { rua: 'Rua Salva', numero: '7', bairro: 'Centro' } });
     const p = await createToolHandlers(s.ctx).prepararPedido({ quantidade: 1, modo: 'troca', pagamento: 'cartao' });
     if (!('rascunhoId' in p)) throw new Error('rascunho inválido');
-    expect(p.resumo.join('\n')).toContain('Rua Salva');
+    expect(p.resumo).toContain('Rua Salva');
     expect(getDraft(s.db, p.rascunhoId)?.request.endereco?.rua).toBe('Rua Salva');
   });
 
@@ -390,17 +390,27 @@ describe('prepararPedido', () => {
     });
     if (!('rascunhoId' in dinheiro)) throw new Error('rascunho inválido');
     expect(dinheiro.total).toBe('R$ 230,00');
-    expect(dinheiro.resumo).toEqual(
-      expect.arrayContaining([
-        expect.stringContaining('2 botijões P13'),
-        'Total: R$ 230,00',
-        'Troco para R$ 250,00',
-        expect.stringContaining('Rua das Flores, 120'),
-      ]),
-    );
+    expect(dinheiro.resumo).toContain('2 botijões P13');
+    expect(dinheiro.resumo).toContain('💰 *Total: R$ 230,00*');
+    expect(dinheiro.resumo).toContain('Troco para R$ 250,00');
+    expect(dinheiro.resumo).toContain('Rua das Flores, 120');
     const pix = await h.prepararPedido({ quantidade: 1, modo: 'troca', pagamento: 'pix_antecipado', endereco: end });
     if (!('rascunhoId' in pix)) throw new Error('rascunho inválido');
-    expect(pix.resumo).toContain('Chave Pix: cnpj 00.000.000/0001-00');
+    expect(pix.resumo).toContain('*Chave Pix:* cnpj 00.000.000/0001-00');
+  });
+
+  test('resumo é um texto pronto para o WhatsApp: título, itens, entrega e o total por último, uma vez só', async () => {
+    const s = setup();
+    const p = await createToolHandlers(s.ctx).prepararPedido({ quantidade: 1, modo: 'troca', pagamento: 'cartao', endereco: end });
+    if (!('rascunhoId' in p)) throw new Error('rascunho inválido');
+    const partes = p.resumo.split('\n\n');
+    expect(partes).toHaveLength(4);
+    expect(partes[0]).toBe('🧾 *Resumo do pedido*');
+    expect(partes[1]).toContain('🛢️ 1 botijão P13 – troca (com o vazio)');
+    expect(partes[2]).toContain('📍 *Entrega:* Rua das Flores, 120');
+    expect(partes[2]).toContain('💳 *Pagamento:* Cartão');
+    expect(partes[3]).toBe(`💰 *Total: ${p.total}*`);
+    expect(p.resumo.match(/Total/g)).toHaveLength(1);
   });
 
   test('Gás do Povo completo mostra casco e taxa', async () => {
@@ -412,9 +422,9 @@ describe('prepararPedido', () => {
       endereco: end,
     });
     if (!('rascunhoId' in p)) throw new Error('rascunho inválido');
-    expect(p.resumo).toEqual(
-      expect.arrayContaining(['Casco: R$ 205,00 cada', 'Taxa de entrega: R$ 5,00', 'Total: R$ 210,00']),
-    );
+    expect(p.resumo).toContain('Casco: R$ 205,00 cada');
+    expect(p.resumo).toContain('Taxa de entrega: R$ 5,00');
+    expect(p.resumo).toContain('*Total: R$ 210,00*');
   });
 });
 
@@ -533,7 +543,7 @@ describe('alterarPedido e cancelarPedido', () => {
     const r = await pedidoConfirmado(s, { quantidade: 1, modo: 'troca', pagamento: 'cartao', endereco: end });
     const h = createToolHandlers(s.ctx);
     const ok = await h.alterarPedido({ numero: r.numero, mudancas: { quantidade: 2 } });
-    expect(ok).toMatchObject({ ok: true, resumo: expect.arrayContaining(['Total: R$ 230,00']) });
+    expect(ok).toMatchObject({ ok: true, resumo: expect.stringContaining('*Total: R$ 230,00*') });
     const ruim = await h.alterarPedido({
       numero: r.numero,
       mudancas: { endereco: { rua: 'X', numero: '1', bairro: 'Longe' } },
@@ -564,7 +574,7 @@ describe('alertarDono e desativarLembretes', () => {
 });
 
 describe('buildTools', () => {
-  test('lista fixa de 9 ferramentas e run devolve JSON', async () => {
+  test('lista fixa de 10 ferramentas e run devolve JSON', async () => {
     const s = setup();
     const tools = buildTools(s.ctx);
     expect(tools.map((t) => t.name)).toEqual([
@@ -575,6 +585,7 @@ describe('buildTools', () => {
       'confirmar_pedido',
       'alterar_pedido',
       'cancelar_pedido',
+      'mostrar_opcoes',
       'alertar_dono',
       'desativar_lembretes',
     ]);

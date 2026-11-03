@@ -36,6 +36,37 @@ describe('createWhatsAppApi', () => {
     });
   });
 
+  test('até 3 opções curtas viram botões', async () => {
+    const { api, calls } = setup([ok()]);
+    await api.sendChoices('5586999991234', 'Confirma?', ['Sim', 'Não']);
+    expect(body(calls[0]!)).toEqual({
+      messaging_product: 'whatsapp',
+      to: '5586999991234',
+      type: 'interactive',
+      interactive: {
+        type: 'button',
+        body: { text: 'Confirma?' },
+        action: {
+          buttons: [
+            { type: 'reply', reply: { id: 'opcao_1', title: 'Sim' } },
+            { type: 'reply', reply: { id: 'opcao_2', title: 'Não' } },
+          ],
+        },
+      },
+    });
+  });
+
+  test('mais de 3 opções, ou título longo para botão, viram lista', async () => {
+    const { api, calls } = setup([ok(), ok()]);
+    await api.sendChoices('5586999991234', 'Paga como?', ['A', 'B', 'C', 'D']);
+    await api.sendChoices('5586999991234', 'Confirma?', ['Sim, pode confirmar agora', 'Não']);
+    for (const c of calls) {
+      expect(body(c).interactive.type).toBe('list');
+      expect(body(c).interactive.action.button).toBe('Clica aqui');
+    }
+    expect(body(calls[0]!).interactive.action.sections[0].rows[3]).toEqual({ id: 'opcao_4', title: 'D' });
+  });
+
   test('template sem parâmetros não manda componentes', async () => {
     const { api, calls } = setup([ok()]);
     await api.sendTemplate('5586999991234', 'oi', []);

@@ -1,13 +1,22 @@
 import type { Db } from '../db/connection.js';
 import { normalizePhone, samePhone } from '../domain/phone.js';
-import type { WhatsAppApi } from './api.js';
+import { MAX_TEXTO_OPCOES, type WhatsAppApi } from './api.js';
 
-export type OutgoingMessage = { telefone: string; texto: string; template?: { nome: string; parametros: string[] } };
+export type OutgoingMessage = {
+  telefone: string;
+  texto: string;
+  /** Opções para o cliente tocar. Sem como mandar o menu, elas saem numeradas no texto. */
+  opcoes?: string[];
+  template?: { nome: string; parametros: string[] };
+};
 export type SendResult =
-  | { ok: true; wamid: string; via: 'texto' | 'template' }
+  | { ok: true; wamid: string; via: 'texto' | 'opcoes' | 'template' }
   | { ok: false; motivo: 'fora_da_janela' | 'erro_api'; detalhe?: string };
 
 const WINDOW_MS = 24 * 60 * 60 * 1000;
+
+const textoComOpcoes = (texto: string, opcoes: string[]): string =>
+  `${texto}\n\n${opcoes.map((o, i) => `${i + 1}. ${o}`).join('\n')}`;
 
 /** `semJanela`: provedores sem a regra das 24 h da Meta (WAHA) mandam texto livre a qualquer hora. */
 export function createOutbox(db: Db, api: WhatsAppApi, clock: () => Date, opts: { semJanela?: boolean } = {}) {
@@ -30,9 +39,23 @@ export function createOutbox(db: Db, api: WhatsAppApi, clock: () => Date, opts: 
     ).run(phone, at.toISOString());
   }
 
+  async function sendOpcoes(m: OutgoingMessage, opcoes: string[]): Promise<SendResult> {
+    if (m.texto.length <= MAX_TEXTO_OPCOES) {
+      try {
+        const { wamid } = await api.sendChoices(m.telefone, m.texto, opcoes);
+        return { ok: true, wamid, via: 'opcoes' };
+      } catch (err) {
+        console.warn('outbox: menu de opções falhou, mandando em texto:', err instanceof Error ? err.message : err);
+      }
+    }
+    const { wamid } = await api.sendText(m.telefone, textoComOpcoes(m.texto, opcoes));
+    return { ok: true, wamid, via: 'texto' };
+  }
+
   async function send(m: OutgoingMessage): Promise<SendResult> {
     try {
       if (opts.semJanela || windowOpen(m.telefone)) {
+        if (m.opcoes && m.opcoes.length > 0) return await sendOpcoes(m, m.opcoes);
         const { wamid } = await api.sendText(m.telefone, m.texto);
         return { ok: true, wamid, via: 'texto' };
       }
