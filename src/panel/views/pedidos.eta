@@ -1,5 +1,13 @@
 <h1 class="page-title"><%= it.titulo %></h1>
 <% if (it.erro) { %><p class="notice notice-neg" role="alert"><%= it.erro %></p><% } %>
-<div id="lista" hx-get="/painel/pedidos/lista<%= it.filtro ? '?status=' + it.filtro : '' %>" hx-trigger="every 10s [!document.querySelector('#lista details[open]')]" hx-swap="innerHTML">
+<div id="lista" hx-get="/painel/pedidos/lista<%= it.detalhe ? '?pedido=' + it.detalhe.id : '' %>" hx-trigger="every 10s" hx-swap="innerHTML">
   <%~ include('_lista', it) %>
 </div>
+<% if (it.detalhe) { %>
+  <a class="scrim" href="/painel/pedidos" aria-label="Fechar o pedido"></a>
+  <aside class="drawer" role="dialog" aria-modal="true" aria-labelledby="drawer-titulo" data-fechar="/painel/pedidos">
+    <div id="detalhe" hx-get="/painel/pedidos/<%= it.detalhe.id %>/detalhe" hx-trigger="every 10s" hx-swap="innerHTML">
+      <%~ include('_detalhe', it) %>
+    </div>
+  </aside>
+<% } %>

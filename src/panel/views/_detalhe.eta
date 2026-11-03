@@ -1,0 +1,92 @@
+<% const d = it.detalhe; %>
+<div class="drawer-head">
+  <div class="drawer-id">
+    <p class="drawer-channel"><%~ it.icons.conversas %>Pedido pelo WhatsApp</p>
+    <h2 id="drawer-titulo">Pedido <span class="mono">#<%= d.id %></span></h2>
+  </div>
+  <span class="pill pill-<%= { recebido: 'warn', saiu: 'info', agendado: 'neutral', entregue: 'pos', retirado: 'pos', cancelado: 'neutral' }[d.status] %>"><%= d.statusRotulo %></span>
+  <a class="btn btn-icon" href="/painel/pedidos" title="Fechar" aria-label="Fechar o pedido" autofocus><%~ it.icons.x %></a>
+</div>
+
+<div class="drawer-body">
+  <ol class="steps" aria-label="Andamento do pedido">
+    <% for (const e of d.etapas) { %>
+      <li class="step<%= e.feita ? ' is-done' : '' %>">
+        <span class="step-bar" aria-hidden="true"></span>
+        <span class="step-label"><%= e.rotulo %></span>
+        <span class="mono step-time"><%= e.hora %></span>
+      </li>
+    <% } %>
+  </ol>
+
+  <% if (d.avisos.length > 0) { %>
+    <div class="drawer-warn" role="note"><%~ it.icons.alertas %><div><% for (const a of d.avisos) { %><p><%= a %></p><% } %></div></div>
+  <% } %>
+
+  <section class="drawer-sec">
+    <h3>Cliente</h3>
+    <p class="drawer-strong"><%= d.cliente %></p>
+    <% if (d.telefone) { %><p class="drawer-line"><%= d.telefone %></p><% } %>
+    <p class="drawer-line"><%~ d.retirada ? it.icons.loja : it.icons.mapa %><span><%= d.retirada ? 'Retirada na loja' : (d.endereco ?? 'Sem endereço') %></span></p>
+    <div class="drawer-links">
+      <% if (d.mapa) { %><a class="btn" href="<%= d.mapa %>" target="_blank" rel="noopener noreferrer"><%~ it.icons.mapa %>Abrir no mapa</a><% } %>
+      <% if (d.temConversa) { %><a class="btn" href="/painel/conversas/<%= d.clienteId %>"><%~ it.icons.conversas %>Abrir conversa</a><% } %>
+    </div>
+  </section>
+
+  <section class="drawer-sec">
+    <h3>Itens</h3>
+    <ul class="drawer-items">
+      <% for (const i of d.itens) { %><li><span><%= i.rotulo %></span><span class="num"><%= i.valor %></span></li><% } %>
+    </ul>
+    <p class="drawer-total"><span>Total</span><span class="num"><%= d.total %></span></p>
+  </section>
+
+  <section class="drawer-sec">
+    <h3>Pagamento</h3>
+    <p class="drawer-line drawer-pay"><%~ it.icons[d.pagIcone] %><%= d.pagamento %></p>
+    <% if (d.troco) { %><p class="drawer-line drawer-note"><%= d.troco %></p><% } %>
+  </section>
+
+  <section class="drawer-sec">
+    <h3>Entregador</h3>
+    <% if (d.entregador) { %>
+      <p class="drawer-line"><span class="avatar avatar-sm"><%= d.iniciais %></span><%= d.entregador %></p>
+    <% } else if (d.esperaEntregador) { %>
+      <p class="drawer-line drawer-note">O entregador assume o pedido respondendo "saiu" à mensagem que recebeu no WhatsApp.</p>
+    <% } else { %>
+      <p class="drawer-line drawer-note">Sem entregador registrado.</p>
+    <% } %>
+  </section>
+
+  <% if (d.mensagens.length > 0) { %>
+    <section class="drawer-sec">
+      <h3>Conversa no WhatsApp</h3>
+      <div class="drawer-chat">
+        <% for (const m of d.mensagens) { %>
+          <p class="bubble bubble-<%= m.de %>"><%= m.texto %><span class="mono"><%= m.hora %></span></p>
+        <% } %>
+      </div>
+    </section>
+  <% } %>
+</div>
+
+<div class="drawer-foot">
+  <% if (d.concluido) { %>
+    <p class="drawer-done"><%= d.status === 'cancelado' ? 'Pedido cancelado' : 'Pedido concluído' %><% if (d.fim) { %> às <%= d.fim %><% } %>.</p>
+  <% } else { %>
+    <% const cancelar = d.acoes.find((a) => a.perigo); const demais = d.acoes.filter((a) => !a.perigo); %>
+    <% if (cancelar) { %>
+      <form method="post" action="/painel/pedidos/<%= d.id %>/status" onsubmit="return confirm('Cancelar este pedido? O cliente e o entregador são avisados.')">
+        <input type="hidden" name="status" value="cancelado"><input type="hidden" name="de" value="detalhe">
+        <button type="submit" class="btn btn-quiet">Cancelar pedido</button>
+      </form>
+    <% } %>
+    <% demais.forEach((a, i) => { %>
+      <form method="post" action="/painel/pedidos/<%= d.id %>/status"<%~ i === 0 ? ' class="grow"' : '' %>>
+        <input type="hidden" name="status" value="<%= a.status %>"><input type="hidden" name="de" value="detalhe">
+        <button type="submit" class="btn<%= i === 0 ? ' primary wide-btn' : '' %>"><% if (i === 0) { %><%~ it.icons[a.status === 'saiu' ? 'moto' : 'check'] %><% } %><%= a.status === 'saiu' ? 'Saiu para entrega' : a.rotulo %></button>
+      </form>
+    <% }) %>
+  <% } %>
+</div>

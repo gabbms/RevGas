@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'vitest';
+import { insertMessage } from '../../src/store/messages.js';
 import { getOrder, insertOrder, type Order } from '../../src/store/orders.js';
 import { form, login, pedidoPadrao, SEGUNDA_10H, setupPanel } from './helpers.js';
 
@@ -147,7 +148,7 @@ describe('painel: pedidos', () => {
     expect(frag.body).toContain('#1');
     expect(frag.body).not.toContain('#2');
     const todos = await app.inject({ method: 'GET', url: '/painel/pedidos/lista', headers: { cookie } });
-    expect(todos.body.indexOf('#2')).toBeLessThan(todos.body.indexOf('#1')); // mais novo primeiro
+    expect(todos.body.indexOf('#2')).toBeLessThan(todos.body.indexOf('#1')); // "Esperando sair" vem antes de "Na rua"
   });
 
   test('pedidos abertos de dias anteriores continuam na lista, sem duplicar', async () => {
@@ -178,9 +179,9 @@ describe('painel: pedidos', () => {
     await orders.create(cliente.id, pedidoPadrao); // #4 de hoje
     const cookie = await login(app);
     const body = (await app.inject({ method: 'GET', url: '/painel/pedidos/lista', headers: { cookie } })).body;
-    const vezes = (id: number) => body.split(`<strong>#${id}</strong>`).length - 1;
+    const vezes = (id: number) => body.split(`<strong class="mono">#${id}</strong>`).length - 1;
     expect([vezes(1), vezes(2), vezes(3), vezes(4)]).toEqual([1, 1, 0, 1]);
-    expect(body.indexOf('#4')).toBeLessThan(body.indexOf('#1'));
+    expect(body.indexOf('#1')).toBeLessThan(body.indexOf('#4')); // o agendado fica na primeira coluna
 
     await app.inject({ method: 'POST', url: '/painel/pedidos/1/status', ...form(cookie, { status: 'cancelado' }) });
     expect(getOrder(db, 1)?.status).toBe('cancelado');
@@ -236,5 +237,86 @@ describe('painel: alertas', () => {
     const after = await app.inject({ method: 'GET', url: '/painel/alertas', headers: { cookie } });
     expect(after.body).not.toContain('Atraso no #1');
     expect(after.body).not.toMatch(/aria-label="\d+ abertos"/);
+  });
+
+  test('quadro: um pedido por coluna conforme o status, com a ação principal no cartão', async () => {
+    const { app, orders, cliente } = await setupPanel();
+    for (let n = 0; n < 3; n++) await orders.create(cliente.id, pedidoPadrao);
+    const cookie = await login(app);
+    await app.inject({ method: 'POST', url: '/painel/pedidos/2/status', ...form(cookie, { status: 'saiu' }) });
+    await app.inject({ method: 'POST', url: '/painel/pedidos/3/status', ...form(cookie, { status: 'cancelado' }) });
+    const body = (await app.inject({ method: 'GET', url: '/painel/pedidos/lista', headers: { cookie } })).body;
+    const coluna = (id: string) => body.slice(body.indexOf(`id="col-${id}"`)).split('</section>')[0]!;
+    expect(coluna('esperando')).toContain('#1');
+    expect(coluna('esperando')).toContain('Saiu para entrega');
+    expect(coluna('na-rua')).toContain('#2');
+    expect(coluna('na-rua')).toContain('Confirmar entrega');
+    expect(coluna('concluidos')).toContain('#3');
+    expect(coluna('concluidos')).not.toContain('<button');
+    expect(coluna('agendados')).toContain('Nenhum pedido agendado');
+  });
+
+  test('o cartão abre o painel lateral do pedido', async () => {
+    const { app, orders, cliente } = await setupPanel();
+    await orders.create(cliente.id, { ...pedidoPadrao, quantidade: 2, trocoParaCentavos: 30000 });
+    const cookie = await login(app);
+    const lista = (await app.inject({ method: 'GET', url: '/painel/pedidos/lista', headers: { cookie } })).body;
+    expect(lista).toContain('href="/painel/pedidos?pedido=1"');
+    expect(lista).not.toContain('role="dialog"');
+    const pagina = (await app.inject({ method: 'GET', url: '/painel/pedidos?pedido=1', headers: { cookie } })).body;
+    expect(pagina).toContain('role="dialog"');
+    expect(pagina).toContain('Pedido pelo WhatsApp');
+    expect(pagina).toContain('Maria');
+    expect(pagina).toContain('2× P13 troca');
+    expect(pagina).toContain('R$ 230,00');
+    expect(pagina).toContain('Abrir no mapa');
+    expect(pagina).toContain(`/painel/conversas/${cliente.id}`);
+    expect(pagina).toContain('is-selected');
+    // Sem entregador cadastrado ainda, explica como ele assume o pedido.
+    expect(pagina).toContain('respondendo "saiu"');
+  });
+
+  test('painel lateral: etapas, conversa, e pedido inexistente ou inválido abre só o quadro', async () => {
+    const { app, db, orders, cliente } = await setupPanel();
+    await orders.create(cliente.id, pedidoPadrao);
+    insertMessage(db, { clienteId: cliente.id, autor: 'cliente', tipo: 'texto', texto: 'quero um gás', wamid: null, criadoEm: SEGUNDA_10H.toISOString() });
+    const cookie = await login(app);
+    const frag = (await app.inject({ method: 'GET', url: '/painel/pedidos/1/detalhe', headers: { cookie } })).body;
+    expect(frag).not.toContain('<html');
+    expect(frag).toContain('quero um gás');
+    expect(frag.match(/class="step[ "]/g)).toHaveLength(4);
+    for (const q of ['pedido=999', 'pedido=abc', 'pedido=-1']) {
+      const res = await app.inject({ method: 'GET', url: `/painel/pedidos?${q}`, headers: { cookie } });
+      expect(res.statusCode).toBe(200);
+      expect(res.body).not.toContain('role="dialog"');
+    }
+    expect((await app.inject({ method: 'GET', url: '/painel/pedidos/999/detalhe', headers: { cookie } })).statusCode).toBe(404);
+    expect((await app.inject({ method: 'GET', url: '/painel/pedidos/1/detalhe' })).headers.location).toBe('/login');
+  });
+
+  test('ação feita no painel lateral volta para ele; só o valor "detalhe" vale', async () => {
+    const { app, db, orders, cliente } = await setupPanel();
+    await orders.create(cliente.id, pedidoPadrao);
+    const cookie = await login(app);
+    const a = await app.inject({ method: 'POST', url: '/painel/pedidos/1/status', ...form(cookie, { status: 'saiu', de: 'detalhe' }) });
+    expect(a.headers.location).toBe('/painel/pedidos?pedido=1');
+    expect(getOrder(db, 1)?.status).toBe('saiu');
+    const b = await app.inject({ method: 'POST', url: '/painel/pedidos/1/status', ...form(cookie, { status: 'retirado', de: 'detalhe' }) });
+    expect(b.headers.location).toBe('/painel/pedidos?pedido=1&erro=transicao');
+    const c = await app.inject({ method: 'POST', url: '/painel/pedidos/1/status', ...form(cookie, { status: 'entregue', de: 'https://evil.example' }) });
+    expect(c.headers.location).toBe('/painel/pedidos');
+  });
+
+  test('painel lateral: Pix antecipado avisa para conferir, e concluído não oferece ações', async () => {
+    const { app, orders, cliente } = await setupPanel();
+    await orders.create(cliente.id, { ...pedidoPadrao, pagamento: 'pix_antecipado' });
+    const cookie = await login(app);
+    const aberto = (await app.inject({ method: 'GET', url: '/painel/pedidos/1/detalhe', headers: { cookie } })).body;
+    expect(aberto).toContain('confira o comprovante');
+    expect(aberto).toContain('Cancelar pedido');
+    await app.inject({ method: 'POST', url: '/painel/pedidos/1/status', ...form(cookie, { status: 'cancelado' }) });
+    const fim = (await app.inject({ method: 'GET', url: '/painel/pedidos/1/detalhe', headers: { cookie } })).body;
+    expect(fim).toContain('Pedido cancelado');
+    expect(fim).not.toContain('Cancelar pedido');
   });
 });

@@ -58,6 +58,6 @@ O caminho do projeto tem acento (`Rev-Gás`): use aspas no PowerShell (`cd "C:\.
 
 - Bot completo e testado de ponta a ponta com WAHA (GOWS) e um chip de teste: conversa, menus com opções, pedido, aviso ao dono, "saiu/entregue" por mensagem, áudio (Groq). Eval com o Claude real passa. 424 testes (o painel novo está num branch, ver abaixo).
 - **A API oficial da Meta está bloqueada**: erro 130497 (conta restrita para o Brasil) por falta de verificação do negócio (exige CNPJ). Até lá, WAHA só para teste e demonstração; o número pode ser banido.
-- **Painel novo ("ÍRIS", modelo em protótipo do Claude Design) em migração** no branch `feat/painel-iris`: só a Central está pronta; as outras telas ainda usam o estilo antigo, já com as cores novas. Não mexa no painel sem combinar.
+- **Painel novo ("ÍRIS", modelo em protótipo do Claude Design) em migração** no branch `feat/painel-iris`: Central e Pedidos (quadro com painel lateral) estão prontas; Conversas, Clientes, Alertas e Configurações ainda usam o layout antigo, já com as cores novas. Entregadores, Estoque e "Novo pedido" da referência ficaram para depois (não existem no projeto). Não mexa no painel sem combinar.
 - Ainda não testado com WAHA: foto de comprovante Pix.
 - Antes de ir ao ar: conta Meta verificada, 4 modelos de mensagem aprovados (PEDIDO e ALERTA obrigatórios), número definitivo, VPS com HTTPS e backup do banco.

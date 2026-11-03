@@ -94,18 +94,10 @@
     }, 1000);
   }
 
-  // Menu de mais ações: fecha ao clicar fora ou com Esc.
-  document.addEventListener('click', function (e) {
-    document.querySelectorAll('details.menu[open]').forEach(function (d) {
-      if (!d.contains(e.target)) d.removeAttribute('open');
-    });
-  });
+  // Painel lateral do pedido: Esc fecha.
   document.addEventListener('keydown', function (e) {
     if (e.key !== 'Escape') return;
-    document.querySelectorAll('details.menu[open]').forEach(function (d) {
-      d.removeAttribute('open');
-      var s = d.querySelector('summary');
-      if (s) s.focus();
-    });
+    var painel = document.querySelector('[data-fechar]');
+    if (painel) window.location.href = painel.getAttribute('data-fechar');
   });
 })();
