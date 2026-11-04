@@ -18,7 +18,7 @@ import { buildApp } from '../src/server.js';
 import { insertAlert } from '../src/store/alerts.js';
 import { updateCustomer, upsertCustomerByPhone } from '../src/store/customers.js';
 import { insertMessage } from '../src/store/messages.js';
-import { insertOrder } from '../src/store/orders.js';
+import { insertOrder, recordOrderMessage } from '../src/store/orders.js';
 import { DEFAULT_SETTINGS, getSettings, updateSettings } from '../src/store/settings.js';
 import { createOutbox } from '../src/whatsapp/outbox.js';
 import { FakeWhatsApp } from '../tests/fakes/fake-whatsapp.js';
@@ -66,7 +66,7 @@ updateSettings(db, {
   },
   bairros: ['Nossa Senhora das Graças', 'Morada do Sol', 'Castelo Branco', 'Fátima', 'Jóquei', 'Ininga'],
   pagamentos: ['dinheiro', 'cartao', 'pix_entrega', 'pix_antecipado', 'gas_do_povo'],
-  chavePix: 'CNPJ 12.345.678/0001-90',
+  chavePix: '12.345.678/0001-90',
   telefoneDono: '5586999990000',
   entregadores: [
     { nome: 'Raimundo', telefone: RAIMUNDO },
@@ -125,7 +125,7 @@ function pedido(p: PedidoDemo) {
   const modo = p.modo ?? 'troca';
   const qt = quote(settings(), { quantidade: q, modo, pagamento: p.pag });
   const enviado = p.status !== 'agendado';
-  return insertOrder(db, {
+  const o = insertOrder(db, {
     clienteId: p.c.id,
     tipo: p.retirada ? 'retirada' : 'entrega',
     quantidade: q,
@@ -142,6 +142,11 @@ function pedido(p: PedidoDemo) {
     saiuEm: p.saiu?.toISOString() ?? null,
     finalizadoEm: p.fim?.toISOString() ?? null,
   });
+  // Como no bot de verdade: o pedido em andamento foi enviado aos dois entregadores (é isso que o painel confere).
+  if (o.status === 'recebido' || o.status === 'saiu') {
+    for (const tel of [RAIMUNDO, CHICO]) recordOrderMessage(db, `demo-${o.id}-${tel}`, o.id, tel);
+  }
+  return o;
 }
 
 // Histórico (pedidos entregues em dias anteriores: alimentam a próxima recompra).

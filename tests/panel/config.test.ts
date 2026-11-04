@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'vitest';
+import { updateOrder } from '../../src/store/orders.js';
 import { getSettings, updateSettings } from '../../src/store/settings.js';
-import { env, form, login, SEGUNDA_10H, setupPanel } from './helpers.js';
+import { env, form, login, pedidoPadrao, SEGUNDA_10H, setupPanel } from './helpers.js';
 
 type Panel = Awaited<ReturnType<typeof setupPanel>>;
 
@@ -173,6 +174,110 @@ describe('painel: configurações', () => {
       { nome: 'Maria', telefone: '5586922220000' },
       { nome: 'Pedro', telefone: '5586933330000' },
     ]);
+  });
+
+  describe('entregador que deixaria um pedido sem ninguém', () => {
+    const MARIA: [string, string] = ['Maria', '86922220000'];
+    const JOAO: [string, string] = ['João', '86911110000'];
+    const ANA_TEL = '5586944440000';
+    const dois = (p: Awaited<ReturnType<typeof setupPanel>>) => {
+      updateSettings(p.db, {
+        ...getSettings(p.db),
+        entregadores: [
+          { nome: 'João', telefone: '5586911110000' },
+          { nome: 'Ana', telefone: ANA_TEL },
+        ],
+      });
+      // A Ana também precisa ter falado com o bot para receber o pedido (janela de 24 h).
+      p.db.prepare('INSERT INTO contact_windows (telefone, ultima_entrada_em) VALUES (?, ?)').run(ANA_TEL, SEGUNDA_10H.toISOString());
+    };
+
+    test('o único que recebeu o pedido não sai nem troca de telefone: o erro cita o pedido e ele volta para a lista', async () => {
+      const p = await setupPanel();
+      await p.orders.create(p.cliente.id, { ...pedidoPadrao });
+      const cookie = await login(p.app);
+      const tirou = await enviar(p, cookie, corpoBase(), undefined, [MARIA]);
+      expect(tirou.statusCode).toBe(422);
+      expect(tirou.body).toContain('João ainda tem o pedido #1 em andamento');
+      expect(tirou.body).toContain('value="João"');
+      expect(tirou.body).toContain('value="Maria"');
+      expect(getSettings(p.db).entregadores).toEqual([{ nome: 'João', telefone: '5586911110000' }]);
+
+      const trocou = await enviar(p, cookie, corpoBase(), undefined, [['João', '86933330000']]);
+      expect(trocou.statusCode).toBe(422);
+      expect(trocou.body).toContain('trocar o telefone');
+      expect(trocou.body.match(/value="João"/g)).toHaveLength(1); // só uma troca: não duplica a pessoa
+      expect(getSettings(p.db).entregadores).toEqual([{ nome: 'João', telefone: '5586911110000' }]);
+    });
+
+    test('pode adicionar gente e manter quem tem pedido', async () => {
+      const p = await setupPanel();
+      await p.orders.create(p.cliente.id, { ...pedidoPadrao });
+      const res = await enviar(p, await login(p.app), corpoBase(), undefined, [JOAO, MARIA]);
+      expect(res.statusCode).toBe(200);
+      expect(getSettings(p.db).entregadores.map((e) => e.nome)).toEqual(['João', 'Maria']);
+    });
+
+    test('o mesmo número com outra formatação não conta como remoção', async () => {
+      const p = await setupPanel();
+      await p.orders.create(p.cliente.id, { ...pedidoPadrao });
+      const res = await enviar(p, await login(p.app), corpoBase(), undefined, [['João Silva', '(86) 91111-0000']]);
+      expect(res.statusCode).toBe(200);
+      expect(getSettings(p.db).entregadores[0]?.nome).toBe('João Silva');
+    });
+
+    test('pedido esperando que outro entregador também recebeu não prende quem sai', async () => {
+      const p = await setupPanel();
+      dois(p);
+      await p.orders.create(p.cliente.id, { ...pedidoPadrao });
+      const cookie = await login(p.app);
+      const res = await enviar(p, cookie, corpoBase(), undefined, [['Ana', '86944440000']]);
+      expect(res.statusCode).toBe(200);
+      expect(getSettings(p.db).entregadores.map((e) => e.nome)).toEqual(['Ana']);
+    });
+
+    test('tirar os dois deixa o pedido esperando sem ninguém: os dois ficam presos, cada um com os seus pedidos', async () => {
+      const p = await setupPanel();
+      dois(p);
+      await p.orders.create(p.cliente.id, { ...pedidoPadrao });
+      await p.orders.create(p.cliente.id, { ...pedidoPadrao });
+      // O dono está cadastrado, mas não recebeu o aviso destes pedidos: quem recebeu foram só os dois que saem.
+      const res = await enviar(p, await login(p.app), { ...corpoBase(), destinoPedidos: 'dono' }, undefined, []);
+      expect(res.statusCode).toBe(422);
+      expect(res.body).toContain('João ainda tem os pedidos #1, #2');
+      expect(res.body).toContain('Ana ainda tem os pedidos #1, #2');
+    });
+
+    test('com o WhatsApp do dono cadastrado, o pedido esperando não fica sem ninguém', async () => {
+      const p = await setupPanel();
+      await p.orders.create(p.cliente.id, { ...pedidoPadrao });
+      // O dono também recebeu o aviso do pedido.
+      p.db.prepare('INSERT OR IGNORE INTO order_messages (wamid, order_id, telefone) VALUES (?, ?, ?)').run('w-dono', 1, '5586999990000');
+      const res = await enviar(p, await login(p.app), { ...corpoBase(), destinoPedidos: 'dono' }, undefined, []);
+      expect(res.statusCode).toBe(200);
+    });
+
+    test('pedido que saiu prende só quem está com ele; terminado ou cancelado, libera', async () => {
+      const p = await setupPanel();
+      dois(p);
+      const a = await p.orders.create(p.cliente.id, { ...pedidoPadrao });
+      if (!a.ok) throw new Error('pedido inválido');
+      updateOrder(p.db, a.order.id, { status: 'saiu', entregadorTelefone: ANA_TEL, saiuEm: SEGUNDA_10H.toISOString() });
+      const cookie = await login(p.app);
+      const tirouAna = await enviar(p, cookie, corpoBase(), undefined, [JOAO]);
+      expect(tirouAna.statusCode).toBe(422);
+      expect(tirouAna.body).toContain('Ana ainda tem o pedido #1 em andamento');
+      expect(tirouAna.body).not.toContain('João ainda tem');
+      expect(getSettings(p.db).entregadores).toHaveLength(2);
+
+      const tirouJoao = await enviar(p, cookie, corpoBase(), undefined, [['Ana', '86944440000']]);
+      expect(tirouJoao.statusCode).toBe(200); // o João não está com nada
+
+      await p.orders.setStatus(a.order.id, 'entregue');
+      const livre = await enviar(p, cookie, { ...corpoBase(), destinoPedidos: 'dono' }, undefined, []);
+      expect(livre.statusCode).toBe(200);
+      expect(getSettings(p.db).entregadores).toEqual([]);
+    });
   });
 
   test('entregadores: um só entregador (campo sem repetição) também salva', async () => {

@@ -1,6 +1,9 @@
 import type { FastifyInstance } from 'fastify';
 import { missingTemplates } from '../config/env.js';
+import { samePhone } from '../domain/phone.js';
 import { isPixKey } from '../domain/pix.js';
+import type { Db } from '../db/connection.js';
+import { listOpenOrders, orderRecipients } from '../store/orders.js';
 import { updateSettings, type StoreSettings } from '../store/settings.js';
 import { renderPage, type PanelDeps } from './auth.js';
 import { DIAS, linhasEntregadores, PAGAMENTOS, parseConfigForm, settingsToForm, type FormErrors, type FormValues } from './config-form.js';
@@ -21,6 +24,31 @@ export function settingsWarnings(s: StoreSettings): string[] {
     avisos.push('Os pedidos vão para os entregadores, mas nenhum está cadastrado: nenhum pedido chega a ninguém.');
   }
   return avisos;
+}
+
+/**
+ * Entregadores que o formulário tira da lista (ou cujo telefone troca) e que deixariam um pedido sem ninguém:
+ * o bot só reconhece como equipe quem está cadastrado agora, então o "entregue" de quem saiu da lista viraria
+ * mensagem de cliente. Prende quem está com um pedido que saiu, e quem foi o único a receber um pedido ainda
+ * esperando (cada pedido novo vai a todos os entregadores: se outro continua na lista, ele pode assumir).
+ */
+function entregadoresComPedido(db: Db, antes: StoreSettings, depois: StoreSettings) {
+  const saem = antes.entregadores.filter((e) => !depois.entregadores.some((n) => samePhone(n.telefone, e.telefone)));
+  if (saem.length === 0) return [];
+  const abertos = listOpenOrders(db).filter((o) => o.status === 'recebido' || o.status === 'saiu');
+  const continuaNaEquipe = (telefone: string): boolean =>
+    depois.entregadores.some((n) => samePhone(n.telefone, telefone)) ||
+    (depois.telefoneDono.trim() !== '' && samePhone(depois.telefoneDono, telefone));
+  return saem
+    .map((entregador) => ({
+      entregador,
+      pedidos: abertos.filter((o) => {
+        if (o.status === 'saiu') return o.entregadorTelefone !== null && samePhone(o.entregadorTelefone, entregador.telefone);
+        const recebedores = orderRecipients(db, o.id);
+        return recebedores.some((t) => samePhone(t, entregador.telefone)) && !recebedores.some(continuaNaEquipe);
+      }),
+    }))
+    .filter((x) => x.pedidos.length > 0);
 }
 
 export function registerConfigRoutes(scope: FastifyInstance, deps: PanelDeps): void {
@@ -46,6 +74,28 @@ export function registerConfigRoutes(scope: FastifyInstance, deps: PanelDeps): v
   scope.post('/painel/config', async (req, reply) => {
     const r = parseConfigForm((req.body ?? {}) as Record<string, unknown>);
     if (!r.ok) return pagina(reply.code(422), r.valores, { erros: r.erros });
+
+    const presos = entregadoresComPedido(deps.db, deps.settings(), r.settings);
+    if (presos.length > 0) {
+      const valores = settingsToForm(r.settings);
+      const nomes = valores.entregadorNome as string[];
+      const telefones = valores.entregadorTelefone as string[];
+      // Quem não pode sair volta para a lista, para o dono ver o que continua valendo. Se o nome ainda está na lista,
+      // foi só uma troca de telefone: não repete a pessoa.
+      for (const { entregador } of presos) {
+        if (nomes.some((n) => n.trim().toLowerCase() === entregador.nome.trim().toLowerCase())) continue;
+        nomes.push(entregador.nome);
+        telefones.push(entregador.telefone);
+      }
+      const erros: FormErrors = {
+        entregadores: presos.map(({ entregador, pedidos }) => {
+          const ids = pedidos.map((o) => `#${o.id}`).join(', ');
+          return `${entregador.nome} ainda tem ${pedidos.length === 1 ? 'o pedido' : 'os pedidos'} ${ids} em andamento. Conclua ou cancele antes de remover ou trocar o telefone dele.`;
+        }),
+      };
+      return pagina(reply.code(422), valores, { erros });
+    }
+
     const salvo = updateSettings(deps.db, r.settings);
     return pagina(reply, settingsToForm(salvo), { salvo: true });
   });
