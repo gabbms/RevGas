@@ -15,7 +15,6 @@ function corpoBase(): Record<string, string> {
     bairros: 'Centro\nSão João',
     chavePix: '00.000.000/0001-00',
     telefoneDono: '86999990000',
-    entregadores: 'João; 86911110000',
     destinoPedidos: 'entregadores',
     gdpAceita: 'on',
     gdpModalidade: 'entrega',
@@ -30,10 +29,20 @@ function corpoBase(): Record<string, string> {
   return c;
 }
 
-/** Envia o formulário; `pagamentos` pode repetir o campo (checkboxes). */
-async function enviar(p: Panel, cookie: string, campos: Record<string, string>, pagamentos: string[] = ['dinheiro', 'cartao']) {
+/** Envia o formulário; `pagamentos` e as linhas de entregador repetem o campo, como no navegador. */
+async function enviar(
+  p: Panel,
+  cookie: string,
+  campos: Record<string, string>,
+  pagamentos: string[] = ['dinheiro', 'cartao'],
+  entregadores: [string, string][] = [['João', '86911110000']],
+) {
   const params = new URLSearchParams(campos);
   for (const x of pagamentos) params.append('pagamentos', x);
+  for (const [nome, telefone] of entregadores) {
+    params.append('entregadorNome', nome);
+    params.append('entregadorTelefone', telefone);
+  }
   return p.app.inject({
     method: 'POST',
     url: '/painel/config',
@@ -55,7 +64,8 @@ describe('painel: configurações', () => {
     const body = (await p.app.inject({ method: 'GET', url: '/painel/config', headers: { cookie } })).body;
     expect(body).toContain('value="115,00"');
     expect(body).toContain('value="320,00"');
-    expect(body).toContain('João; 5586911110000');
+    expect(body).toContain('name="entregadorNome" placeholder="João" aria-label="Nome do entregador" autocomplete="off" value="João"');
+    expect(body).toContain('value="5586911110000"');
     expect(body).toContain('Centro');
     expect(body).toMatch(/name="pagamentos" value="pix_antecipado"\s+checked/);
     expect(body).toMatch(/name="gdpAceita"[^>]*checked/);
@@ -134,24 +144,74 @@ describe('painel: configurações', () => {
   });
 
   test.each([
-    ['sem ponto e vírgula', 'João 86911110000'],
-    ['telefone curto', 'João; 12345'],
-    ['sem nome', '; 86911110000'],
-  ])('entregador inválido (%s) mostra erro e não salva', async (_nome, linha) => {
+    ['sem telefone', ['Pedro', ''], 'Informe o WhatsApp do entregador.'],
+    ['telefone curto', ['Pedro', '12345'], 'O telefone precisa ter DDD e pelo menos 10 números.'],
+    ['sem nome', ['', '86933330000'], 'Informe o nome do entregador.'],
+    ['telefone repetido', ['Pedro', '86922220000'], 'Esse telefone já está em outro entregador.'],
+    ['mesmo número sem o 9º dígito', ['Pedro', '8622220000'], 'Esse telefone já está em outro entregador.'],
+  ] as [string, [string, string], string][])('entregador inválido (%s) mostra erro e não salva', async (_caso, linha, mensagem) => {
     const p = await setupPanel();
     const cookie = await login(p.app);
-    const res = await enviar(p, cookie, { ...corpoBase(), entregadores: `Maria; 86922220000\n${linha}` });
+    const res = await enviar(p, cookie, corpoBase(), undefined, [['Maria', '86922220000'], linha]);
     expect(res.statusCode).toBe(422);
-    expect(res.body).toContain('Linha 2');
-    expect(res.body).toContain('Maria; 86922220000');
+    expect(res.body).toContain(mensagem);
+    // O erro fica na linha do problema, e o que foi digitado continua na tela.
+    expect(res.body).toContain('id="erro-entregador-1"');
+    expect(res.body).toContain('value="Maria"');
+    expect(res.body).toContain('value="86922220000"');
     expect(getSettings(p.db).entregadores).toEqual([{ nome: 'João', telefone: '5586911110000' }]);
+  });
+
+  test('entregadores: adiciona, troca e remove pela lista, mantendo a ordem', async () => {
+    const p = await setupPanel();
+    const cookie = await login(p.app);
+    await enviar(p, cookie, corpoBase(), undefined, [
+      ['Maria', '86922220000'],
+      ['  Pedro  ', ' (86) 93333-0000 '],
+    ]);
+    expect(getSettings(p.db).entregadores).toEqual([
+      { nome: 'Maria', telefone: '5586922220000' },
+      { nome: 'Pedro', telefone: '5586933330000' },
+    ]);
+  });
+
+  test('entregadores: um só entregador (campo sem repetição) também salva', async () => {
+    const p = await setupPanel();
+    const cookie = await login(p.app);
+    await enviar(p, cookie, { ...corpoBase(), entregadorNome: 'Ana', entregadorTelefone: '86944440000' }, undefined, []);
+    expect(getSettings(p.db).entregadores).toEqual([{ nome: 'Ana', telefone: '5586944440000' }]);
   });
 
   test('entregadores: linhas vazias são ignoradas e a lista pode ficar vazia', async () => {
     const p = await setupPanel();
     const cookie = await login(p.app);
-    await enviar(p, cookie, { ...corpoBase(), entregadores: '\n  \n', destinoPedidos: 'dono' });
+    await enviar(p, cookie, { ...corpoBase(), destinoPedidos: 'dono' }, undefined, [['', ''], ['  ', ' ']]);
     expect(getSettings(p.db).entregadores).toEqual([]);
+  });
+
+  test('entregadores: linha vazia no meio não desalinha o erro da linha seguinte', async () => {
+    const p = await setupPanel();
+    const cookie = await login(p.app);
+    const res = await enviar(p, cookie, corpoBase(), undefined, [['Maria', '86922220000'], ['', ''], ['Pedro', '123']]);
+    expect(res.statusCode).toBe(422);
+    expect(res.body).toContain('id="erro-entregador-2"');
+    expect(res.body).not.toContain('id="erro-entregador-1"');
+  });
+
+  test('sempre oferece uma linha vazia para cadastrar sem JavaScript', async () => {
+    const p = await setupPanel();
+    const cookie = await login(p.app);
+    const body = (await p.app.inject({ method: 'GET', url: '/painel/config', headers: { cookie } })).body;
+    // João, a linha vazia e o modelo que o painel.js copia.
+    expect(body.match(/name="entregadorNome"/g)).toHaveLength(3);
+    expect(body.match(/data-vazia/g)).toHaveLength(2);
+  });
+
+  test('escapa HTML no nome do entregador reapresentado', async () => {
+    const p = await setupPanel();
+    const cookie = await login(p.app);
+    const res = await enviar(p, cookie, corpoBase(), undefined, [['"><script>x()</script>', '123']]);
+    expect(res.body).not.toContain('<script>x()</script>');
   });
 
   test('pix_antecipado sem chave Pix mostra erro e não salva', async () => {
@@ -259,7 +319,7 @@ describe('painel: aviso de modelos de mensagem ausentes', () => {
     const semDono = await enviar(p, cookie, { ...corpoBase(), destinoPedidos: 'dono', telefoneDono: '' });
     expect(semDono.statusCode).toBe(422);
     expect(semDono.body).toContain('Informe o seu WhatsApp: os pedidos novos vão para ele.');
-    const semEntregador = await enviar(p, cookie, { ...corpoBase(), destinoPedidos: 'entregadores', entregadores: '' });
+    const semEntregador = await enviar(p, cookie, { ...corpoBase(), destinoPedidos: 'entregadores' }, undefined, []);
     expect(semEntregador.statusCode).toBe(422);
     expect(semEntregador.body).toContain('Cadastre pelo menos um entregador');
     expect(getSettings(p.db).entregadores).toHaveLength(1);

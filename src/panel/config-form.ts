@@ -1,4 +1,4 @@
-import { normalizePhone } from '../domain/phone.js';
+import { normalizePhone, samePhone } from '../domain/phone.js';
 import { isPixKey, PIX_KEY_HELP } from '../domain/pix.js';
 import type { PaymentMethod, WeekdayKey } from '../domain/types.js';
 import { StoreSettingsSchema, type StoreSettings } from '../store/settings.js';
@@ -21,7 +21,7 @@ export const PAGAMENTOS: { id: PaymentMethod; rotulo: string }[] = [
   { id: 'pix_antecipado', rotulo: 'Pix antecipado (o cliente paga antes)' },
 ];
 
-/** O que o formulário mostra: texto de cada campo, `'on'` para checkbox marcada, lista para os pagamentos. */
+/** O que o formulário mostra: texto de cada campo, `'on'` para checkbox marcada, lista para pagamentos e entregadores. */
 export type FormValues = Record<string, string | string[]>;
 export type FormErrors = Record<string, string[]>;
 
@@ -58,7 +58,8 @@ export function settingsToForm(s: StoreSettings): FormValues {
     pagamentos: s.pagamentos.filter((p) => p !== 'gas_do_povo'),
     chavePix: s.chavePix ?? '',
     telefoneDono: s.telefoneDono,
-    entregadores: s.entregadores.map((e) => `${e.nome}; ${e.telefone}`).join('\n'),
+    entregadorNome: s.entregadores.map((e) => e.nome),
+    entregadorTelefone: s.entregadores.map((e) => e.telefone),
     destinoPedidos: s.destinoPedidos,
     gdpModalidade: s.gasDoPovo.modalidade,
     gdpTaxa: formatReais(s.gasDoPovo.taxaEntregaCentavos),
@@ -80,14 +81,38 @@ export function settingsToForm(s: StoreSettings): FormValues {
   return v;
 }
 
+const CAMPOS_ENTREGADOR = ['entregadorNome', 'entregadorTelefone'];
+
 function bodyToValues(body: Record<string, unknown>): FormValues {
   const v: FormValues = {};
   for (const [k, raw] of Object.entries(body)) {
-    if (k === 'pagamentos') v[k] = (Array.isArray(raw) ? raw : [raw]).filter((x): x is string => typeof x === 'string');
+    const lista = Array.isArray(raw) ? raw : [raw];
+    if (k === 'pagamentos') v[k] = lista.filter((x): x is string => typeof x === 'string');
+    // Nome e telefone andam em par pela posição: um valor estranho vira vazio, sem desalinhar os dois.
+    else if (CAMPOS_ENTREGADOR.includes(k)) v[k] = lista.map((x) => (typeof x === 'string' ? x : ''));
     else if (typeof raw === 'string') v[k] = raw;
   }
   if (!Array.isArray(v.pagamentos)) v.pagamentos = [];
+  for (const k of CAMPOS_ENTREGADOR) if (!Array.isArray(v[k])) v[k] = [];
   return v;
+}
+
+const campoEntregador = (i: number): string => `entregador_${i}`;
+
+/** Nome e telefone de cada linha, na ordem do formulário (a posição liga a linha ao erro dela). */
+function paresEntregador(v: FormValues): { nome: string; telefone: string }[] {
+  const nomes = v.entregadorNome as string[];
+  const telefones = v.entregadorTelefone as string[];
+  return Array.from({ length: Math.max(nomes.length, telefones.length) }, (_, i) => ({
+    nome: nomes[i] ?? '',
+    telefone: telefones[i] ?? '',
+  }));
+}
+
+/** Linhas que a tela desenha: as preenchidas e uma vazia no fim, que permite cadastrar mesmo sem JavaScript. */
+export function linhasEntregadores(v: FormValues, erros: FormErrors = {}) {
+  const preenchidas = paresEntregador(v).map((p, indice) => ({ ...p, indice, vazia: false, erros: erros[campoEntregador(indice)] ?? [] }));
+  return [...preenchidas, { nome: '', telefone: '', indice: preenchidas.length, vazia: true, erros: [] as string[] }];
 }
 
 const text = (v: FormValues, k: string): string => {
@@ -142,17 +167,25 @@ export function parseConfigForm(body: Record<string, unknown>): ParsedForm {
   const bairros = [...new Set(linhas(String(v.bairros ?? '')))];
 
   const entregadores: StoreSettings['entregadores'] = [];
-  linhas(String(v.entregadores ?? '')).forEach((linha, i) => {
-    const partes = linha.split(';').map((p) => p.trim());
-    const [nome, telefone] = partes;
-    if (partes.length !== 2 || !nome || !telefone) {
-      add(erros, 'entregadores', `Linha ${i + 1}: use o formato Nome; telefone (por exemplo João; 86 99999-0000).`);
+  paresEntregador(v).forEach((par, i) => {
+    const nome = par.nome.trim();
+    const telefone = par.telefone.trim();
+    if (nome === '' && telefone === '') return; // linha vazia: ninguém cadastrado nela
+    const campo = campoEntregador(i);
+    if (nome === '') {
+      add(erros, campo, 'Informe o nome do entregador.');
+    } else if (telefone === '') {
+      add(erros, campo, 'Informe o WhatsApp do entregador.');
     } else if (telefone.replace(/\D/g, '').length < MIN_DIGITOS_TELEFONE) {
-      add(erros, 'entregadores', `Linha ${i + 1}: o telefone precisa ter DDD e pelo menos 10 números.`);
+      add(erros, campo, 'O telefone precisa ter DDD e pelo menos 10 números.');
+    } else if (entregadores.some((e) => samePhone(e.telefone, telefone))) {
+      // Com e sem o 9º dígito é o mesmo número: a pessoa receberia cada pedido duas vezes.
+      add(erros, campo, 'Esse telefone já está em outro entregador.');
     } else {
       entregadores.push({ nome, telefone });
     }
   });
+  const erroEmEntregador = paresEntregador(v).some((_, i) => erros[campoEntregador(i)]);
 
   const telefoneDono = text(v, 'telefoneDono');
   if (telefoneDono !== '' && normalizePhone(telefoneDono).length < MIN_DIGITOS_TELEFONE) {
@@ -164,7 +197,7 @@ export function parseConfigForm(body: Record<string, unknown>): ParsedForm {
   if (destino === 'dono' && telefoneDono === '') {
     add(erros, 'telefoneDono', 'Informe o seu WhatsApp: os pedidos novos vão para ele.');
   }
-  if (destino === 'entregadores' && entregadores.length === 0 && !erros.entregadores) {
+  if (destino === 'entregadores' && entregadores.length === 0 && !erroEmEntregador) {
     add(erros, 'entregadores', 'Cadastre pelo menos um entregador, ou mande os pedidos para o seu WhatsApp.');
   }
 

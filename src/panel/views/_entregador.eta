@@ -1,0 +1,7 @@
+<% const invalida = it.erros.length > 0; %>
+<div class="driver"<% if (it.vazia) { %> data-vazia<% } %>>
+  <input class="input" name="entregadorNome" placeholder="João" aria-label="Nome do entregador" autocomplete="off" value="<%= it.nome %>"<%~ invalida ? ' aria-invalid="true" aria-describedby="erro-entregador-' + it.indice + '"' : '' %>>
+  <input class="input num" name="entregadorTelefone" inputmode="tel" placeholder="86 99999-0000" aria-label="WhatsApp do entregador" autocomplete="off" value="<%= it.telefone %>"<%~ invalida ? ' aria-invalid="true"' : '' %>>
+  <button type="button" class="btn btn-icon driver-remove" data-entregador-remover title="Remover entregador" aria-label="Remover entregador" hidden><%~ it.icons.x %></button>
+  <% if (invalida) { %><div class="driver-error" id="erro-entregador-<%= it.indice %>"><% for (const m of it.erros) { %><p class="field-error"><%= m %></p><% } %></div><% } %>
+</div>
