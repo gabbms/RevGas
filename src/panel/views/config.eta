@@ -153,12 +153,17 @@ const totalErros = Object.keys(it.erros).length;
         <input class="input num" id="telefoneDono" name="telefoneDono" inputmode="tel" placeholder="86 99999-0000" value="<%= it.v.telefoneDono %>"<%~ invalido('telefoneDono') %>>
         <% for (const m of erro('telefoneDono')) { %><p class="field-error" id="erro-telefoneDono"><%= m %></p><% } %>
       </div>
-      <div class="field">
-        <label for="entregadores">Entregadores</label>
-        <textarea class="input" id="entregadores" name="entregadores" rows="4" placeholder="João; 86 99999-0000" aria-describedby="entregadores-hint<%= erro('entregadores').length ? ' erro-entregadores' : '' %>"<%~ erro('entregadores').length ? ' aria-invalid="true"' : '' %>><%= it.v.entregadores %></textarea>
-        <p class="hint" id="entregadores-hint">Um por linha: nome; telefone com DDD. Cada um precisa mandar um "oi" para o número do bot antes do primeiro pedido.</p>
+      <fieldset class="drivers" aria-describedby="entregadores-hint">
+        <legend class="label">Entregadores</legend>
+        <div class="driver-head" aria-hidden="true"><span>Nome</span><span>WhatsApp</span></div>
+        <div class="driver-list" data-entregadores>
+          <% for (const e of it.entregadores) { %><%~ include('_entregador', { ...e, icons: it.icons }) %><% } %>
+        </div>
+        <template data-entregador-modelo><%~ include('_entregador', { nome: '', telefone: '', indice: 'novo', vazia: true, erros: [], icons: it.icons }) %></template>
+        <button type="button" class="btn driver-add" data-entregador-adicionar hidden>Adicionar entregador</button>
+        <p class="hint" id="entregadores-hint">Telefone com DDD. Cada um precisa mandar um "oi" para o número do bot antes do primeiro pedido.</p>
         <% for (const m of erro('entregadores')) { %><p class="field-error" id="erro-entregadores"><%= m %></p><% } %>
-      </div>
+      </fieldset>
     </div>
   </section>
 

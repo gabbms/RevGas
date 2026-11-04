@@ -3,7 +3,7 @@ import { missingTemplates } from '../config/env.js';
 import { isPixKey } from '../domain/pix.js';
 import { updateSettings, type StoreSettings } from '../store/settings.js';
 import { renderPage, type PanelDeps } from './auth.js';
-import { DIAS, PAGAMENTOS, parseConfigForm, settingsToForm, type FormErrors, type FormValues } from './config-form.js';
+import { DIAS, linhasEntregadores, PAGAMENTOS, parseConfigForm, settingsToForm, type FormErrors, type FormValues } from './config-form.js';
 
 /** Problemas do que está salvo agora, que fazem o bot atender mal mesmo sem erro no formulário. */
 export function settingsWarnings(s: StoreSettings): string[] {
@@ -36,6 +36,7 @@ export function registerConfigRoutes(scope: FastifyInstance, deps: PanelDeps): v
       salvo: extra.salvo ?? false,
       dias: DIAS,
       pagamentos: PAGAMENTOS,
+      entregadores: linhasEntregadores(valores, extra.erros),
       modelosFaltando: missingTemplates(deps.env),
       avisos: settingsWarnings(deps.settings()),
     });

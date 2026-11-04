@@ -62,6 +62,38 @@
     });
   }
 
+  // Configurações: adicionar e remover entregadores. Sem JavaScript, a linha vazia cadastra e limpar a linha remove.
+  var listaEntregadores = document.querySelector('[data-entregadores]');
+  var modeloEntregador = document.querySelector('[data-entregador-modelo]');
+  var botaoAdicionar = document.querySelector('[data-entregador-adicionar]');
+  if (listaEntregadores && modeloEntregador && botaoAdicionar) {
+    var ativarRemover = function (linha) {
+      linha.querySelector('[data-entregador-remover]').hidden = false;
+    };
+    var novaLinha = function () {
+      var linha = modeloEntregador.content.firstElementChild.cloneNode(true);
+      ativarRemover(linha);
+      listaEntregadores.appendChild(linha);
+      return linha;
+    };
+    var linhas = listaEntregadores.querySelectorAll('.driver');
+    // Com o botão de adicionar disponível, a linha vazia só fica se ainda não houver ninguém.
+    if (linhas.length > 1) linhas[linhas.length - 1].remove();
+    listaEntregadores.querySelectorAll('.driver').forEach(ativarRemover);
+    botaoAdicionar.hidden = false;
+    botaoAdicionar.addEventListener('click', function () {
+      novaLinha().querySelector('input').focus();
+    });
+    listaEntregadores.addEventListener('click', function (e) {
+      var remover = e.target.closest('[data-entregador-remover]');
+      if (!remover) return;
+      remover.closest('.driver').remove();
+      // A lista nunca fica sem campos para digitar.
+      if (!listaEntregadores.querySelector('.driver')) novaLinha();
+      botaoAdicionar.focus();
+    });
+  }
+
   // Tema e menu recolhido ficam guardados neste navegador.
   function guardar(chave, valor) {
     try {
